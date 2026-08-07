@@ -1,29 +1,32 @@
 # Project Manifest
 
-This repository was intentionally created as a fresh, public-safe derivative blueprint rather than a copy of any private Git history.
+This repository is intentionally a fresh public project, not a copy of private operational Git history.
 
 ## Included capabilities
 
 - guarded manual Production deployment;
-- private Production inventory pattern;
-- exact-hostname deployment guard, including Ansible Check Mode;
+- ignored local Production inventory pattern;
+- exact-hostname guard that also works in Ansible Check Mode;
 - immutable image digest validation;
 - allowlisted file deployment;
 - transient transactional rollback for previously managed stacks;
 - functional HTTP verification;
-- annotated release tags and configuration rollback;
-- disposable Lab rollback test for GitHub Actions;
-- Gitleaks configuration and complete-history CI scan;
-- public/private boundary documentation;
+- annotated operational release tags and configuration rollback;
+- disposable Lab rollback proof in GitHub Actions;
+- Gitleaks complete-history scanning;
+- public-safety validation;
+- OpenSSF Scorecard workflow;
+- Dependabot configuration and community contribution templates;
 - generic restore-drill template.
 
-## Local validation performed before packaging
+## Public-safety design
 
-- Bash syntax: PASS
-- Python compile: PASS
-- YAML parsing: PASS
-- managed stack contract validation: PASS
-- integrity guard tests: PASS
-- private-environment identifier scan: PASS
+The repository contains no real Production inventory, private infrastructure address plan, credential, private key, backup receipt, recovery code, or private Git history.
 
-The full Docker + Ansible disposable rollback proof is designed to run in GitHub Actions and was not executed in the artifact-build container.
+The validation suite rejects a tracked Production inventory, sensitive key/container files, private-key material, private IPv4 addresses except loopback, and internal `home.arpa` hostnames.
+
+## Validation expectations
+
+A public release should have green static validation, a passing disposable rollback proof, no Gitleaks findings, and reviewed OpenSSF Scorecard results.
+
+The repository intentionally invokes shell and Python entry points explicitly in CI and Make targets so correctness does not depend on executable bits surviving browser uploads, ZIP extraction, or cross-platform Git clients.

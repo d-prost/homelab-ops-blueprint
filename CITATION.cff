@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+title: HomeLab Ops Blueprint
+message: If this project is useful in your work, cite the repository and the release you used.
+type: software
+license: MIT
+repository-code: https://github.com/d-prost/homelab-ops-blueprint
+version: 0.1.0

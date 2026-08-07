@@ -1,2 +1,8 @@
-# Auto detect text files and perform LF normalization
+# Normalize text files across platforms while keeping scripts predictable.
 * text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+Makefile text eol=lf

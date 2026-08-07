@@ -2,7 +2,13 @@
 set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"; cd "$repo_root"
 while IFS= read -r -d '' script; do bash -n "$script"; done < <(find scripts tests -type f -name '*.sh' -print0)
-python3 -m py_compile scripts/*.py
+python3 - <<'PYCODE'
+from pathlib import Path
+for path in sorted(Path('scripts').glob('*.py')):
+    compile(path.read_text(encoding='utf-8'), str(path), 'exec')
+print('Python syntax validation passed.')
+PYCODE
+python3 scripts/check-public-safety.py
 python3 scripts/validate-stack-contracts.py
 bash tests/test-integrity-guards.sh
 if command -v yamllint >/dev/null 2>&1; then yamllint -d '{extends: default, rules: {line-length: disable, truthy: disable}}' .github ansible stacks; fi

@@ -1,0 +1,34 @@
+---
+name: Bug report
+description: Report reproducible behavior in the public blueprint.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: Remove all private hostnames, IPs, credentials, and private URLs before submitting.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal public-safe steps or configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation output
+      description: Relevant sanitized output from `make validate` or the failing test.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-safety confirmation
+      options:
+        - label: I removed credentials and private infrastructure identifiers.
+          required: true
