@@ -1,0 +1,17 @@
+name: homelab-ops-demo
+
+services:
+  dozzle:
+    image: ${DOZZLE_IMAGE:?Set immutable DOZZLE_IMAGE RepoDigest}
+    container_name: homelab-ops-demo-dozzle
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - homelab_ops_demo
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  homelab_ops_demo:
+    external: true

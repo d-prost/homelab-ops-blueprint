@@ -1,0 +1,51 @@
+---
+- name: Deploy one allowlisted HomeLab stack
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+  vars:
+    stack_source_dir: "{{ homelab_repo_root }}/stacks/{{ stack_name }}"
+
+  pre_tasks:
+    - name: Require explicit deployment metadata
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name is match('^[a-z0-9][a-z0-9-]*$')
+          - homelab_release_commit is defined
+          - homelab_release_commit is match('^[0-9a-f]{40}$')
+        fail_msg: A safe stack name and exact release commit are required.
+
+    - name: Require explicit environment classification
+      ansible.builtin.assert:
+        that:
+          - homelab_environment is defined
+          - homelab_environment in ['production', 'lab']
+          - homelab_expected_hostname is defined
+          - homelab_expected_hostname | length > 0
+        fail_msg: Inventory must declare environment and the exact expected hostname.
+
+    - name: Read actual host name
+      ansible.builtin.command:
+        argv:
+          - /bin/hostname
+      register: homelab_actual_hostname
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse execution on an unexpected host
+      ansible.builtin.assert:
+        that:
+          - homelab_actual_hostname.stdout == homelab_expected_hostname
+        fail_msg: >-
+          Refusing deployment because the actual hostname does not match the
+          exact hostname declared by the selected inventory.
+
+    - name: Load stack deployment contract
+      ansible.builtin.include_vars:
+        file: "{{ stack_source_dir }}/stack.yml"
+
+  roles:
+    - role: managed_stack

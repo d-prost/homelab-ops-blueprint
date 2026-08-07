@@ -1,0 +1,264 @@
+---
+- name: Validate stack contract
+  ansible.builtin.assert:
+    that:
+      - stack_target_dir is match('^/(opt|srv)/homelab-ops/[A-Za-z0-9._/-]+$')
+      - "'/../' not in stack_target_dir"
+      - "'/./' not in stack_target_dir"
+      - "'//' not in stack_target_dir"
+      - not stack_target_dir.endswith('/..')
+      - not stack_target_dir.endswith('/.')
+      - stack_compose_dest is match('^[A-Za-z0-9._-]+$')
+      - stack_managed_files | length > 0
+      - stack_expected_services | length > 0
+      - stack_functional_checks | length > 0
+    fail_msg: Stack contract contains an unsafe target or lacks required checks.
+
+- name: Set exact transaction directories
+  ansible.builtin.set_fact:
+    stack_candidate_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}"
+    stack_rollback_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}-rollback"
+
+- name: Validate and deploy candidate transaction
+  block:
+    - name: Create candidate directory
+      ansible.builtin.file:
+        path: "{{ stack_candidate_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      check_mode: false
+
+    - name: Copy managed files to candidate
+      ansible.builtin.copy:
+        src: "{{ stack_source_dir }}/{{ item.src }}"
+        dest: "{{ stack_candidate_dir }}/{{ item.dest }}"
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: false
+      loop: "{{ stack_managed_files }}"
+      check_mode: false
+
+    - name: Render candidate image list
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_candidate_dir + '/defaults.env',
+              '-f', stack_candidate_dir + '/' + stack_compose_dest,
+              'config', '--images'] }}
+      register: managed_stack_images
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse mutable or unpinned images
+      ansible.builtin.assert:
+        that:
+          - managed_stack_images.stdout_lines | length > 0
+          - >-
+            managed_stack_images.stdout_lines
+            | select('match', '^.+@sha256:[0-9a-f]{64}$')
+            | list | length == managed_stack_images.stdout_lines | length
+        fail_msg: Every managed image must use an immutable @sha256 digest.
+
+    - name: Validate candidate Compose model
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_candidate_dir + '/defaults.env',
+              '-f', stack_candidate_dir + '/' + stack_compose_dest,
+              'config', '--quiet'] }}
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Create exact target directory
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Inspect current managed target files
+      ansible.builtin.stat:
+        path: "{{ stack_target_dir }}/{{ item.dest }}"
+      loop: "{{ stack_managed_files }}"
+      register: stack_current_target_files
+      changed_when: false
+
+    - name: Determine whether automatic rollback is available
+      ansible.builtin.set_fact:
+        stack_rollback_available: >-
+          {{
+            not ansible_check_mode
+            and
+            (
+              stack_current_target_files.results
+              | selectattr('stat.exists', 'equalto', false)
+              | list
+              | length
+            ) == 0
+          }}
+
+    - name: Create transient rollback directory
+      ansible.builtin.file:
+        path: "{{ stack_rollback_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      when: stack_rollback_available | bool
+
+    - name: Capture current managed files for transaction rollback
+      ansible.builtin.copy:
+        src: "{{ stack_target_dir }}/{{ item.dest }}"
+        dest: "{{ stack_rollback_dir }}/{{ item.dest }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: false
+      loop: "{{ stack_managed_files }}"
+      when: stack_rollback_available | bool
+
+    - name: Install allowlisted managed files atomically
+      ansible.builtin.copy:
+        src: "{{ stack_candidate_dir }}/{{ item.dest }}"
+        dest: "{{ stack_target_dir }}/{{ item.dest }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: false
+      loop: "{{ stack_managed_files }}"
+
+    - name: Apply Compose model
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_target_dir + '/defaults.env',
+              '-f', stack_target_dir + '/' + stack_compose_dest, 'up', '-d'] }}
+      register: managed_stack_up
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Read running Compose services
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_target_dir + '/defaults.env',
+              '-f', stack_target_dir + '/' + stack_compose_dest,
+              'ps', '--status', 'running', '--services'] }}
+      register: managed_stack_running
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require every expected service to be running
+      ansible.builtin.assert:
+        that:
+          - stack_expected_services | difference(managed_stack_running.stdout_lines) | length == 0
+        fail_msg: One or more expected Compose services are not running.
+      when: not ansible_check_mode
+
+    - name: Run functional stack verification
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ homelab_repo_root }}/scripts/verify-compose-health.py"
+          - --stack-dir
+          - "{{ stack_target_dir }}"
+          - --compose-file
+          - "{{ stack_compose_dest }}"
+          - --env-file
+          - defaults.env
+          - --contract
+          - "{{ stack_source_dir }}/stack.yml"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create deployment record directory
+      ansible.builtin.file:
+        path: "{{ homelab_deployment_record_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      when: not ansible_check_mode
+
+    - name: Record deployed Git commit
+      ansible.builtin.copy:
+        dest: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+        owner: root
+        group: root
+        mode: "0640"
+        backup: false
+        content: |
+          stack={{ stack_name }}
+          commit={{ homelab_release_commit }}
+          verified=functional
+      when: not ansible_check_mode
+
+  rescue:
+    - name: Refuse an unprotected first deployment failure
+      ansible.builtin.fail:
+        msg: >-
+          Deployment failed before a previous managed file set was available.
+          No automatic rollback target exists for this first adoption.
+      when: not (stack_rollback_available | default(false) | bool)
+
+    - name: Restore previous managed files
+      ansible.builtin.copy:
+        src: "{{ stack_rollback_dir }}/{{ item.dest }}"
+        dest: "{{ stack_target_dir }}/{{ item.dest }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: false
+      loop: "{{ stack_managed_files }}"
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Reapply previous Compose model
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_target_dir + '/defaults.env',
+              '-f', stack_target_dir + '/' + stack_compose_dest, 'up', '-d'] }}
+      changed_when: true
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Verify restored previous Compose model
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ homelab_repo_root }}/scripts/verify-compose-health.py"
+          - --stack-dir
+          - "{{ stack_target_dir }}"
+          - --compose-file
+          - "{{ stack_compose_dest }}"
+          - --env-file
+          - defaults.env
+          - --contract
+          - "{{ stack_source_dir }}/stack.yml"
+      changed_when: false
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Report failed deployment with successful automatic rollback
+      ansible.builtin.fail:
+        msg: Deployment failed and the previous managed files were restored and verified.
+      when: stack_rollback_available | default(false) | bool
+
+  always:
+    - name: Remove exact candidate directory
+      ansible.builtin.file:
+        path: "{{ stack_candidate_dir }}"
+        state: absent
+      check_mode: false
+
+    - name: Remove transient rollback directory
+      ansible.builtin.file:
+        path: "{{ stack_rollback_dir }}"
+        state: absent
+      check_mode: false

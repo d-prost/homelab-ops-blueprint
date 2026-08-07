@@ -1,0 +1,34 @@
+# Local/private inventory
+ansible/inventory/production/hosts.yml
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets/
+private/
+recovery/private/
+
+# Runtime/evidence
+*.log
+*.bak
+*.backup
+*.backup-*
+runtime/
+reports/
+artifacts/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

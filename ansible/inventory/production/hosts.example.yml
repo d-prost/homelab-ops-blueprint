@@ -1,0 +1,12 @@
+---
+# Copy this file to hosts.yml. The real hosts.yml is ignored by Git.
+all:
+  children:
+    production:
+      hosts:
+        production-host:
+          ansible_connection: local
+          ansible_host: 127.0.0.1
+          ansible_user: CHANGE_ME_OPERATOR
+          homelab_environment: production
+          homelab_expected_hostname: CHANGE_ME_PRODUCTION_HOSTNAME

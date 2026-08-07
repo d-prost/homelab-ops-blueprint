@@ -1,0 +1,9 @@
+---
+homelab_deployment_record_dir: /etc/homelab-ops/deployments
+homelab_candidate_dir: /var/lib/homelab-ops/candidates
+homelab_clean_docker_argv:
+  - /usr/bin/env
+  - -i
+  - HOME=/root
+  - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  - /usr/bin/docker

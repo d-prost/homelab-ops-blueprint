@@ -1,0 +1,11 @@
+title = "HomeLab Ops Blueprint Gitleaks"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documentation placeholders"
+regexes = [
+  '''CHANGE_ME(?:_[A-Z0-9_]+)?''',
+  '''EXAMPLE_ONLY'''
+]

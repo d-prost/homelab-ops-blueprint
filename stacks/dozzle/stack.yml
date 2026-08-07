@@ -1,0 +1,19 @@
+---
+stack_target_dir: /opt/homelab-ops/stacks/dozzle
+stack_compose_dest: docker-compose.yml
+stack_expected_services:
+  - dozzle
+stack_managed_files:
+  - src: compose.yaml
+    dest: docker-compose.yml
+    mode: "0644"
+  - src: defaults.env
+    dest: defaults.env
+    mode: "0644"
+stack_functional_checks:
+  - name: dozzle-http
+    service: dozzle
+    port: 8080
+    path: /
+    status_codes:
+      - 200
