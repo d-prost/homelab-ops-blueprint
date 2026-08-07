@@ -9,7 +9,7 @@ cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/
 mkdir -p "$runtime_dir"; chmod 0700 "$runtime_dir"
 if ! sudo /usr/bin/docker network inspect "$network_name" >/dev/null 2>&1; then sudo /usr/bin/docker network create "$network_name" >/dev/null; network_created=1; fi
 export XDG_RUNTIME_DIR="$runtime_dir"; export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
-scripts/deploy-stack.sh dozzle --inventory lab
+bash scripts/deploy-stack.sh dozzle --inventory lab
 before_compose="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"; before_defaults="$(sudo sha256sum "$target_dir/defaults.env" | awk '{print $1}')"
 git archive HEAD | tar -x -C "$tmp_root"
 python3 - "$tmp_root/stacks/dozzle/compose.yaml" <<'PY_INNER'

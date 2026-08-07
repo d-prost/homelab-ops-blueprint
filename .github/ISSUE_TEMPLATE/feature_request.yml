@@ -1,0 +1,26 @@
+---
+name: Feature request
+description: Propose a reusable improvement to the blueprint.
+title: "feature: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Operational problem
+      description: Describe the concrete problem before proposing implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Explain how this remains environment-neutral and testable.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety impact
+      description: Explain effects on deployment guards, rollback, secrets, and Production boundaries.
+    validations:
+      required: true

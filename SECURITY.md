@@ -1,33 +1,23 @@
 # Security Policy
 
-## Scope
+## Supported versions
 
-This repository is a reusable blueprint. Do not report vulnerabilities in your private HomeLab configuration by opening a public issue here.
-
-## Never publish environment secrets
-
-Do not commit or paste into issues, pull requests, CI logs, screenshots or examples:
-
-- credentials, tokens, API keys or recovery codes;
-- SSH or TLS private keys;
-- Restic passwords or remote credentials;
-- complete environment files;
-- real private IP plans or internal host inventories;
-- sensitive backup receipts, snapshot identifiers or recovery packs;
-- incident evidence that exposes private infrastructure.
-
-If a secret is committed, assume it is compromised. Rotate it first. Removing the current file does not remove it from Git history.
-
-## Deployment assumptions
-
-The blueprint assumes:
-
-- Production is not automatically deployed from GitHub Actions;
-- administrative services are restricted to trusted networks or VPN access;
-- Docker and sudo access are already protected;
-- Production secrets live outside this public repository;
-- stateful services have independent backup and restore procedures.
+Security fixes are applied to the default branch and the latest released major version once public releases exist.
 
 ## Reporting a vulnerability
 
-Use GitHub private vulnerability reporting if enabled by the repository owner. Otherwise contact the maintainer through a private channel rather than disclosing exploitable details publicly.
+Use GitHub Private Vulnerability Reporting when it is enabled for this repository.
+
+Do not open a public issue containing credentials, private hostnames, internal IP addresses, private URLs, backup metadata, private keys, recovery material, or exploit details against a real environment.
+
+For non-sensitive hardening suggestions, a normal GitHub issue is appropriate.
+
+## Project security boundary
+
+This repository intentionally contains reusable deployment logic but no real Production inventory or secrets. Consumers are responsible for host hardening, network access control, secret storage, backups, functional restore testing, and monitoring.
+
+Configuration rollback is not data recovery.
+
+## If a secret is committed
+
+Assume it is compromised. Rotate or revoke it first, then remove it from the repository and, when necessary, rewrite affected Git history. Deleting the current file alone does not invalidate material already exposed in commits, forks, caches, or logs.

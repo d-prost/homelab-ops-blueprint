@@ -1,156 +1,142 @@
 # HomeLab Ops Blueprint
 
-A public-safe reference implementation for operating a small Docker Compose HomeLab with Git, Ansible, immutable image references, functional health checks, and transactional configuration rollback.
+[![Validate blueprint](https://github.com/d-prost/homelab-ops-blueprint/actions/workflows/validate.yml/badge.svg)](https://github.com/d-prost/homelab-ops-blueprint/actions/workflows/validate.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/d-prost/homelab-ops-blueprint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/d-prost/homelab-ops-blueprint)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-This repository is intentionally environment-neutral. It contains no real production inventory, IP addresses, credentials, backup receipts, certificate paths, recovery codes, or private infrastructure evidence.
+A public-safe reference project for operating small Docker Compose environments with Git, Ansible, immutable image references, functional verification, and transactional configuration rollback.
 
-## What this project demonstrates
+The project is intentionally environment-neutral. It is designed to be reusable without publishing real hostnames, IP addresses, credentials, backup metadata, private PKI details, or Production evidence.
 
-- manual Production deployment from reviewed Git only;
-- clean-branch and exact `main == origin/main` guards;
-- private Production inventory kept outside Git;
-- explicit host identity checks before any deployment;
-- immutable container image references using `@sha256:` digests;
-- allowlist-only managed files;
-- transient transaction rollback without persistent `.bak` files;
-- functional HTTP verification after deploy and after rollback;
-- an ephemeral Lab rollback proof in GitHub Actions;
-- complete-history secret scanning with Gitleaks;
-- a practical functional restore-drill template.
+## Why this exists
+
+Small self-hosted environments often have enough operational complexity to need disciplined change control, but not enough scale to justify a full orchestration platform. This project focuses on that middle ground:
+
+- reviewed Git as the desired-state source;
+- deliberate, manual Production deployment;
+- exact host-identity guards;
+- immutable container images;
+- allowlist-only configuration changes;
+- functional health verification instead of trusting `container=running`;
+- automatic rollback of previously managed configuration;
+- disposable rollback proof in CI;
+- explicit separation between public automation and private environment data.
+
+## Safety properties
+
+A Production deployment is refused unless the repository is clean, the current branch is `main`, local `main` exactly matches `origin/main`, a real Production inventory exists locally, and the target hostname exactly matches the inventory declaration.
+
+Managed container images must use `@sha256:` digests. Only files declared by the stack contract may be installed. A deployment record is written only after functional checks pass.
+
+Before replacing an already managed stack, the role captures only the allowlisted managed files in a transient root-owned transaction directory. If deployment or verification fails, it restores the previous files, reapplies the previous Compose model, verifies it again, and removes the transaction directory.
+
+This protects configuration changes. It is not a substitute for application-data backups or restore testing.
 
 ## Public/private boundary
 
-The public repository contains reusable logic and examples. Real environment data belongs in ignored local files or a separate private repository.
+The repository must never contain real operational secrets or identifying infrastructure data. Keep these outside Git or in a separate private repository:
 
-Never commit:
+- Production hostnames, IP addresses, internal DNS zones, and VPN details;
+- passwords, API tokens, private keys, recovery codes, and secret `.env` files;
+- real backup receipts, Run IDs, Snapshot IDs, and restore credentials;
+- firewall exports, incident logs, private audit evidence, and PKI internals;
+- break-glass procedures and private recovery material.
 
-- real Production hostnames, IP addresses or internal DNS zones;
-- passwords, tokens, API keys, private keys or recovery codes;
-- `.env` files containing secrets;
-- real backup Run IDs, Snapshot IDs or receipts;
-- firewall exports, private audit evidence or incident logs;
-- private PKI layout or break-glass procedures.
-
-See [`docs/PUBLIC_PRIVATE_BOUNDARY.md`](docs/PUBLIC_PRIVATE_BOUNDARY.md).
+The validation suite includes a public-safety check in addition to Gitleaks. See [`docs/PUBLIC_PRIVATE_BOUNDARY.md`](docs/PUBLIC_PRIVATE_BOUNDARY.md).
 
 ## Repository layout
 
 ```text
-.github/workflows/       CI validation and Lab rollback proof
-ansible/                 guarded deployment logic
-scripts/                 operator commands and validation
-stacks/dozzle/           public stateless example stack
-recovery/                generic restore-drill template
-docs/                    architecture and adoption guidance
-tests/                   integrity and rollback tests
+.github/                    CI, Scorecard, Dependabot, issue/PR templates
+ansible/                    guarded deployment logic and example inventories
+docs/                       architecture, adoption, release, and maintainer docs
+recovery/                   generic functional restore-drill template
+scripts/                    deployment, validation, and safety tooling
+stacks/dozzle/              public stateless example stack
+tests/                      integrity and disposable rollback tests
 ```
 
-## Requirements
+## Quick start
 
-Controller:
+### 1. Requirements
 
 - Linux
 - Git
 - Docker Engine with Compose v2
 - Ansible Core
-- Python 3 + PyYAML
-- ShellCheck
-- yamllint
-- Gitleaks
+- Python 3 and PyYAML
 
-Production deployment is deliberately local/manual. CI validates the desired state but does not deploy Production.
+For the full maintainer validation suite, also install ShellCheck, yamllint, and Gitleaks.
 
-## Quick start
+### 2. Validate the repository
 
-### 1. Clone
+The commands deliberately use `bash` and `python3` explicitly, so CI does not depend on executable bits surviving ZIP extraction, browser uploads, or cross-platform Git clients.
 
 ```bash
-git clone <your-public-repository-url>
-cd homelab-ops-blueprint
-```
-
-### 2. Validate
-
-```bash
-scripts/validate-repository.sh
+make validate
 ```
 
 ### 3. Create a private Production inventory
-
-The real file is ignored by Git:
 
 ```bash
 cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-Edit `hosts.yml` locally and replace every `CHANGE_ME` value.
+Edit the ignored `hosts.yml` locally and replace every `CHANGE_ME` value.
 
-### 4. Dry-run a stack
+### 4. Dry-run the example stack
 
 ```bash
-scripts/deploy-stack.sh dozzle --check
+bash scripts/deploy-stack.sh dozzle --check
 ```
-
-Production deployment is refused unless:
-
-- the repository is clean;
-- the current branch is `main`;
-- local `main` exactly equals `origin/main`;
-- the Production inventory resolves to at least one host;
-- the actual hostname exactly matches `homelab_expected_hostname`.
 
 ### 5. Deploy explicitly
 
 ```bash
-scripts/deploy-stack.sh dozzle
+bash scripts/deploy-stack.sh dozzle
 ```
 
-A successful deployment writes a non-secret deployment record only after the functional health check passes.
-
-## Transaction rollback
-
-Before replacing an already managed stack, Ansible copies only the allowlisted managed configuration files into a transient root-owned directory. If Compose application, service-state verification, or functional verification fails, the role restores the previous managed files, reapplies the previous Compose model, verifies it again, and reports the failed deployment.
-
-The transaction directory is removed afterward. It is not an accumulating backup archive.
-
-A first adoption has no prior managed configuration and therefore no automatic rollback target. Test first adoption in Lab before relying on Production automation.
-
-## Release rollback
-
-After a verified Production deployment:
+### 6. Tag a verified operational release
 
 ```bash
-scripts/tag-release.sh
+bash scripts/tag-release.sh
 ```
 
-To redeploy an earlier verified release:
+To redeploy an earlier verified operational release:
 
 ```bash
-scripts/rollback-stack.sh dozzle release-YYYYMMDD-HHMMSSZ
+bash scripts/rollback-stack.sh dozzle release-YYYYMMDD-HHMMSSZ
 ```
 
-Configuration rollback is not data recovery. Databases and application data require their own restore procedures.
+## CI and supply-chain checks
 
-## CI
+The validation workflow runs two independent jobs:
 
-GitHub Actions performs:
+- **Static validation**: Bash/Python/YAML checks, stack-contract validation, Ansible syntax checks, public-safety validation, and Gitleaks;
+- **Disposable rollback proof**: real Dozzle deployment on a disposable runner, intentional failure injection, automatic configuration rollback, SHA-256 comparison, and functional HTTP verification after rollback.
 
-- Bash, YAML and Python validation;
-- stack-contract validation;
-- Ansible syntax checks;
-- Gitleaks scan of complete Git history;
-- real disposable Dozzle deployment;
-- intentional replacement failure;
-- automatic rollback;
-- managed-file SHA-256 comparison;
-- functional HTTP verification after rollback.
+A separate OpenSSF Scorecard workflow evaluates repository security practices with narrowly scoped permissions. Dependabot watches pinned GitHub Actions for updates.
 
-## Security model
+## Project scope
 
-This project reduces deployment mistakes. It is not a complete security platform and does not replace host hardening, network controls, secret management, backups, restore testing, or monitoring.
+This project is a deployment-safety blueprint, not a complete HomeLab platform. It deliberately does not provide automatic public-CI Production deployment, secret storage, firewall management, database rollback, or backup orchestration.
 
-Read [`SECURITY.md`](SECURITY.md) before adapting it to a real environment.
+See [`ROADMAP.md`](ROADMAP.md) for planned work and explicit non-goals.
+
+## Contributing
+
+Contributions are welcome when they improve safety, portability, testing, documentation, or reusable stack contracts without weakening the public/private boundary.
+
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), [`GOVERNANCE.md`](GOVERNANCE.md), and [`ROADMAP.md`](ROADMAP.md).
+
+## Security
+
+Do not report vulnerabilities containing sensitive infrastructure details in a public issue. Follow [`SECURITY.md`](SECURITY.md).
+
+## Releases
+
+Public project releases use Semantic Versioning. Operational deployment tags created by `scripts/tag-release.sh` are separate from project version tags. See [`docs/RELEASES.md`](docs/RELEASES.md).
 
 ## License
 

@@ -1,0 +1,8 @@
+# Default maintainer review for all changes.
+* @d-prost
+
+# Deployment and CI safety boundaries deserve explicit maintainer review.
+/.github/workflows/ @d-prost
+/ansible/ @d-prost
+/scripts/ @d-prost
+/tests/ @d-prost
