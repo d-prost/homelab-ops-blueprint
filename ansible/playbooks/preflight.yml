@@ -6,15 +6,19 @@
   vars_files:
     - "{{ playbook_dir }}/../group_vars/all.yml"
   vars:
-    stack_source_dir: "{{ homelab_repo_root }}/stacks/{{ stack_name }}"
+    stack_source_dir: "{{ homelab_release_root }}/stacks/{{ stack_name }}"
 
   pre_tasks:
-    - name: Require a selected stack
+    - name: Require a selected stack and explicit payload roots
       ansible.builtin.assert:
         that:
           - stack_name is defined
           - stack_name is match('^[a-z0-9][a-z0-9-]*$')
-        fail_msg: Pass a safe stack name.
+          - homelab_repo_root is defined
+          - homelab_repo_root is match('^/.+')
+          - homelab_release_root is defined
+          - homelab_release_root is match('^/.+')
+        fail_msg: Pass a safe stack name and absolute control-plane and payload roots.
 
     - name: Require explicit environment classification
       ansible.builtin.assert:
@@ -59,11 +63,14 @@
       check_mode: false
 
     - name: Render candidate image list
+      # Compose rendering consumes only the release payload. Run it on the
+      # control plane because a remote target must not require a Git checkout.
       ansible.builtin.command:
         argv: >-
           {{ homelab_clean_docker_argv +
              ['compose', '--env-file', stack_source_dir + '/defaults.env',
               '-f', stack_source_dir + '/compose.yaml', 'config', '--images'] }}
+      delegate_to: localhost
       register: rendered_images
       changed_when: false
       check_mode: false
@@ -79,11 +86,13 @@
         fail_msg: Every managed image must use an immutable @sha256 digest.
 
     - name: Validate complete Compose model
+      # This is payload validation, not a target Runtime check.
       ansible.builtin.command:
         argv: >-
           {{ homelab_clean_docker_argv +
              ['compose', '--env-file', stack_source_dir + '/defaults.env',
               '-f', stack_source_dir + '/compose.yaml', 'config', '--quiet'] }}
+      delegate_to: localhost
       changed_when: false
       check_mode: false
       no_log: true

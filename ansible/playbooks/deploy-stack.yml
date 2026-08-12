@@ -6,7 +6,7 @@
   vars_files:
     - "{{ playbook_dir }}/../group_vars/all.yml"
   vars:
-    stack_source_dir: "{{ homelab_repo_root }}/stacks/{{ stack_name }}"
+    stack_source_dir: "{{ homelab_release_root }}/stacks/{{ stack_name }}"
 
   pre_tasks:
     - name: Require explicit deployment metadata
@@ -16,7 +16,13 @@
           - stack_name is match('^[a-z0-9][a-z0-9-]*$')
           - homelab_release_commit is defined
           - homelab_release_commit is match('^[0-9a-f]{40}$')
-        fail_msg: A safe stack name and exact release commit are required.
+          - homelab_repo_root is defined
+          - homelab_repo_root is match('^/.+')
+          - homelab_release_root is defined
+          - homelab_release_root is match('^/.+')
+        fail_msg: >-
+          A safe stack name, exact release commit and absolute control-plane
+          and payload roots are required.
 
     - name: Require explicit environment classification
       ansible.builtin.assert:

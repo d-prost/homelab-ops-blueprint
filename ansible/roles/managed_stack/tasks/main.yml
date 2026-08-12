@@ -14,10 +14,94 @@
       - stack_functional_checks | length > 0
     fail_msg: Stack contract contains an unsafe target or lacks required checks.
 
-- name: Set exact transaction directories
+- name: Inspect prior deployment record
+  ansible.builtin.stat:
+    path: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+  register: stack_deployment_record_stat
+  changed_when: false
+
+- name: Read prior deployment record
+  ansible.builtin.slurp:
+    src: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+  register: stack_deployment_record
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Parse prior deployed commit
+  ansible.builtin.set_fact:
+    stack_previous_commit_matches: >-
+      {{
+        stack_deployment_record.content
+        | b64decode
+        | regex_findall('(?m)^commit=([0-9a-f]{40})$')
+      }}
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Require one authoritative prior deployed commit
+  ansible.builtin.assert:
+    that:
+      - stack_previous_commit_matches | length == 1
+    fail_msg: Prior deployment record does not contain exactly one valid commit.
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Load exact prior contract from Git history on the control plane
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/git
+      - -C
+      - "{{ homelab_repo_root }}"
+      - show
+      - "{{ stack_previous_commit_matches[0] }}:stacks/{{ stack_name }}/stack.yml"
+  delegate_to: localhost
+  become: false
+  register: stack_previous_contract_raw
+  changed_when: false
+  check_mode: false
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Parse exact prior release contract
+  ansible.builtin.set_fact:
+    stack_previous_contract: "{{ stack_previous_contract_raw.stdout | from_yaml }}"
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Validate prior release rollback boundary
+  ansible.builtin.assert:
+    that:
+      - stack_previous_contract is mapping
+      - stack_previous_contract.stack_target_dir == stack_target_dir
+      - stack_previous_contract.stack_compose_dest is match('^[A-Za-z0-9._-]+$')
+      - stack_previous_contract.stack_managed_files | length > 0
+      - stack_previous_contract.stack_expected_services | length > 0
+      - stack_previous_contract.stack_functional_checks | length > 0
+    fail_msg: >-
+      Prior release contract is unavailable or incompatible with the current
+      target. Refusing an unverified automatic rollback boundary.
+  when: stack_deployment_record_stat.stat.exists
+
+- name: Set exact transaction boundaries
   ansible.builtin.set_fact:
     stack_candidate_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}"
-    stack_rollback_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}-rollback"
+    stack_rollback_dir: >-
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}-rollback
+    stack_previous_contract_available: "{{ stack_deployment_record_stat.stat.exists }}"
+    stack_previous_managed_files: >-
+      {{
+        stack_previous_contract.stack_managed_files
+        if stack_deployment_record_stat.stat.exists
+        else []
+      }}
+    stack_previous_managed_dests: >-
+      {{
+        stack_previous_contract.stack_managed_files
+        | map(attribute='dest') | list
+        if stack_deployment_record_stat.stat.exists
+        else []
+      }}
+    stack_current_managed_dests: "{{ stack_managed_files | map(attribute='dest') | list }}"
+
+- name: Determine files introduced only by the candidate release
+  ansible.builtin.set_fact:
+    stack_candidate_only_dests: >-
+      {{ stack_current_managed_dests | difference(stack_previous_managed_dests) }}
 
 - name: Validate and deploy candidate transaction
   block:
@@ -28,6 +112,17 @@
         owner: root
         group: root
         mode: "0700"
+      check_mode: false
+
+    - name: Create candidate managed parent directories
+      ansible.builtin.file:
+        path: "{{ stack_candidate_dir }}/{{ item.dest | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop: "{{ stack_managed_files }}"
+      when: (item.dest | dirname) != '.'
       check_mode: false
 
     - name: Copy managed files to candidate
@@ -81,21 +176,33 @@
         group: root
         mode: "0750"
 
-    - name: Inspect current managed target files
+    - name: Create managed target parent directories
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}/{{ item.dest | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop: "{{ stack_managed_files }}"
+      when: (item.dest | dirname) != '.'
+
+    - name: Inspect prior managed target files
       ansible.builtin.stat:
         path: "{{ stack_target_dir }}/{{ item.dest }}"
-      loop: "{{ stack_managed_files }}"
-      register: stack_current_target_files
+      loop: "{{ stack_previous_managed_files }}"
+      register: stack_previous_target_files
       changed_when: false
+      when: stack_previous_contract_available | bool
 
     - name: Determine whether automatic rollback is available
       ansible.builtin.set_fact:
         stack_rollback_available: >-
           {{
             not ansible_check_mode
+            and stack_previous_contract_available
             and
             (
-              stack_current_target_files.results
+              stack_previous_target_files.results | default([])
               | selectattr('stat.exists', 'equalto', false)
               | list
               | length
@@ -111,7 +218,19 @@
         mode: "0700"
       when: stack_rollback_available | bool
 
-    - name: Capture current managed files for transaction rollback
+    - name: Create rollback parent directories
+      ansible.builtin.file:
+        path: "{{ stack_rollback_dir }}/{{ item.dest | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop: "{{ stack_previous_managed_files }}"
+      when:
+        - stack_rollback_available | bool
+        - (item.dest | dirname) != '.'
+
+    - name: Capture prior managed files for transaction rollback
       ansible.builtin.copy:
         src: "{{ stack_target_dir }}/{{ item.dest }}"
         dest: "{{ stack_rollback_dir }}/{{ item.dest }}"
@@ -120,7 +239,17 @@
         group: root
         mode: "{{ item.mode }}"
         backup: false
-      loop: "{{ stack_managed_files }}"
+      loop: "{{ stack_previous_managed_files }}"
+      when: stack_rollback_available | bool
+
+    - name: Capture exact prior contract for rollback verification
+      ansible.builtin.copy:
+        dest: "{{ stack_rollback_dir }}/stack.yml"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: "{{ stack_previous_contract_raw.stdout }}"
       when: stack_rollback_available | bool
 
     - name: Install allowlisted managed files atomically
@@ -162,19 +291,27 @@
         fail_msg: One or more expected Compose services are not running.
       when: not ansible_check_mode
 
-    - name: Run functional stack verification
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/python3
-          - "{{ homelab_repo_root }}/scripts/verify-compose-health.py"
-          - --stack-dir
-          - "{{ stack_target_dir }}"
-          - --compose-file
-          - "{{ stack_compose_dest }}"
-          - --env-file
-          - defaults.env
-          - --contract
-          - "{{ stack_source_dir }}/stack.yml"
+    - name: Stage current contract for remote functional verification
+      ansible.builtin.copy:
+        src: "{{ stack_source_dir }}/stack.yml"
+        dest: "{{ stack_candidate_dir }}/stack.yml"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+      when: not ansible_check_mode
+
+    - name: Run functional stack verification on the target
+      # The verifier needs the target Docker daemon. The script module transfers
+      # it, while the contract is staged above, so no target checkout is needed.
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/verify-compose-health.py
+          --stack-dir {{ stack_target_dir }}
+          --compose-file {{ stack_compose_dest }}
+          --env-file defaults.env
+          --contract {{ stack_candidate_dir }}/stack.yml
+        executable: /usr/bin/python3
       changed_when: false
       when: not ansible_check_mode
 
@@ -197,18 +334,21 @@
         content: |
           stack={{ stack_name }}
           commit={{ homelab_release_commit }}
+          target={{ stack_target_dir }}
           verified=functional
       when: not ansible_check_mode
 
   rescue:
-    - name: Refuse an unprotected first deployment failure
+    - name: Refuse an unprotected deployment failure
       ansible.builtin.fail:
         msg: >-
-          Deployment failed before a previous managed file set was available.
-          No automatic rollback target exists for this first adoption.
+          Deployment failed before a complete prior managed file set and its
+          exact Git contract were available. No verified automatic rollback
+          target exists. Original failure:
+          {{ ansible_failed_result.msg | default(ansible_failed_result) }}
       when: not (stack_rollback_available | default(false) | bool)
 
-    - name: Restore previous managed files
+    - name: Restore prior managed files
       ansible.builtin.copy:
         src: "{{ stack_rollback_dir }}/{{ item.dest }}"
         dest: "{{ stack_target_dir }}/{{ item.dest }}"
@@ -217,37 +357,65 @@
         group: root
         mode: "{{ item.mode }}"
         backup: false
-      loop: "{{ stack_managed_files }}"
+      loop: "{{ stack_previous_managed_files }}"
       when: stack_rollback_available | default(false) | bool
 
-    - name: Reapply previous Compose model
+    - name: Remove files introduced only by failed candidate
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ stack_candidate_only_dests }}"
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Reapply prior Compose model
       ansible.builtin.command:
         argv: >-
           {{ homelab_clean_docker_argv +
              ['compose', '--env-file', stack_target_dir + '/defaults.env',
-              '-f', stack_target_dir + '/' + stack_compose_dest, 'up', '-d'] }}
+              '-f', stack_target_dir + '/' + stack_previous_contract.stack_compose_dest,
+              'up', '-d'] }}
       changed_when: true
       when: stack_rollback_available | default(false) | bool
 
-    - name: Verify restored previous Compose model
+    - name: Read running services after restoring prior release
       ansible.builtin.command:
-        argv:
-          - /usr/bin/python3
-          - "{{ homelab_repo_root }}/scripts/verify-compose-health.py"
-          - --stack-dir
-          - "{{ stack_target_dir }}"
-          - --compose-file
-          - "{{ stack_compose_dest }}"
-          - --env-file
-          - defaults.env
-          - --contract
-          - "{{ stack_source_dir }}/stack.yml"
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', stack_target_dir + '/defaults.env',
+              '-f', stack_target_dir + '/' + stack_previous_contract.stack_compose_dest,
+              'ps', '--status', 'running', '--services'] }}
+      register: stack_previous_running
       changed_when: false
       when: stack_rollback_available | default(false) | bool
 
-    - name: Report failed deployment with successful automatic rollback
+    - name: Require prior release services to be running
+      ansible.builtin.assert:
+        that:
+          - >-
+            stack_previous_contract.stack_expected_services
+            | difference(stack_previous_running.stdout_lines) | length == 0
+        fail_msg: One or more services from the restored release are not running.
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Verify restored prior release on the target
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/verify-compose-health.py
+          --stack-dir {{ stack_target_dir }}
+          --compose-file {{ stack_previous_contract.stack_compose_dest }}
+          --env-file defaults.env
+          --contract {{ stack_rollback_dir }}/stack.yml
+        executable: /usr/bin/python3
+      changed_when: false
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Report failed deployment with successful rollback
       ansible.builtin.fail:
-        msg: Deployment failed and the previous managed files were restored and verified.
+        msg: >-
+          Deployment failed and the prior managed files were restored,
+          reapplied and functionally verified with their exact Git contract.
+          Original failure:
+          {{ ansible_failed_result.msg | default(ansible_failed_result) }}
       when: stack_rollback_available | default(false) | bool
 
   always:

@@ -18,10 +18,10 @@ import sys, yaml
 path=Path(sys.argv[1]); model=yaml.safe_load(path.read_text()); model['services']['dozzle']['entrypoint']=['/bin/sh','-c','exit 42']; path.write_text(yaml.safe_dump(model,sort_keys=False))
 PY_INNER
 set +e
-ANSIBLE_CONFIG="$tmp_root/ansible/ansible.cfg" ansible-playbook -i "$tmp_root/ansible/inventory/lab/hosts.yml" "$tmp_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_repo_root="$tmp_root" >"$failure_log" 2>&1
+ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" ansible-playbook -i "$repo_root/ansible/inventory/lab/hosts.yml" "$repo_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_repo_root="$repo_root" -e homelab_release_root="$tmp_root" >"$failure_log" 2>&1
 failed_rc=$?; set -e
 ((failed_rc != 0)) || { cat "$failure_log" >&2; exit 1; }
-grep -q 'previous managed files were restored' "$failure_log" || { cat "$failure_log" >&2; exit 1; }
+grep -q 'prior managed files were restored' "$failure_log" || { cat "$failure_log" >&2; exit 1; }
 after_compose="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"; after_defaults="$(sudo sha256sum "$target_dir/defaults.env" | awk '{print $1}')"
 [[ "$before_compose" == "$after_compose" ]]; [[ "$before_defaults" == "$after_defaults" ]]
 sudo /usr/bin/python3 "$repo_root/scripts/verify-compose-health.py" --stack-dir "$target_dir" --compose-file docker-compose.yml --env-file defaults.env --contract "$repo_root/stacks/dozzle/stack.yml"
