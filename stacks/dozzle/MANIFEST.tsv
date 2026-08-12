@@ -1,0 +1,2 @@
+compose.yaml	/opt/homelab-ops/stacks/dozzle/docker-compose.yml
+defaults.env	/opt/homelab-ops/stacks/dozzle/defaults.env

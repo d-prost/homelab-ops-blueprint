@@ -9,7 +9,11 @@ This repository is intentionally a fresh public project, not a copy of private o
 - exact-hostname guard that also works in Ansible Check Mode;
 - immutable image digest validation;
 - allowlisted file deployment;
+- exact source-to-target manifest validation;
+- remote-target verification without a target-side repository checkout;
+- current control-plane enforcement for historical release deployment;
 - transient transactional rollback for previously managed stacks;
+- rollback verification against the exact prior Git contract;
 - functional HTTP verification;
 - annotated operational release tags and configuration rollback;
 - disposable Lab rollback proof in GitHub Actions;
@@ -17,7 +21,8 @@ This repository is intentionally a fresh public project, not a copy of private o
 - public-safety validation;
 - OpenSSF Scorecard workflow;
 - Dependabot configuration and community contribution templates;
-- generic restore-drill template.
+- generic restore-drill template;
+- generic stateful-service adoption checklist.
 
 ## Public-safety design
 

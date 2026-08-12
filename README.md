@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/d-prost/homelab-ops-blueprint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/d-prost/homelab-ops-blueprint)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A public-safe reference project for operating small Docker Compose environments with Git, Ansible, immutable image references, functional verification, and transactional configuration rollback.
+A public-safe reference project for operating small Docker Compose environments with Git, Ansible, immutable image references, remote-target verification, functional checks, and transactional configuration rollback.
 
 The project is intentionally environment-neutral. It is designed to be reusable without publishing real hostnames, IP addresses, credentials, backup metadata, private PKI details, or Production evidence.
 
@@ -15,8 +15,10 @@ Small self-hosted environments often have enough operational complexity to need 
 - reviewed Git as the desired-state source;
 - deliberate, manual Production deployment;
 - exact host-identity guards;
+- a control plane that can deploy to targets without repository checkouts;
 - immutable container images;
 - allowlist-only configuration changes;
+- machine-checkable source-to-target manifests;
 - functional health verification instead of trusting `container=running`;
 - automatic rollback of previously managed configuration;
 - disposable rollback proof in CI;
@@ -26,9 +28,11 @@ Small self-hosted environments often have enough operational complexity to need 
 
 A Production deployment is refused unless the repository is clean, the current branch is `main`, local `main` exactly matches `origin/main`, a real Production inventory exists locally, and the target hostname exactly matches the inventory declaration.
 
-Managed container images must use `@sha256:` digests. Only files declared by the stack contract may be installed. A deployment record is written only after functional checks pass.
+Managed container images must use `@sha256:` digests. Only files declared by the stack contract and its matching `MANIFEST.tsv` may be installed. A deployment record is written only after functional checks pass.
 
-Before replacing an already managed stack, the role captures only the allowlisted managed files in a transient root-owned transaction directory. If deployment or verification fails, it restores the previous files, reapplies the previous Compose model, verifies it again, and removes the transaction directory.
+Before replacing an already managed stack, the role reads the prior deployment receipt, loads that exact contract from Git history, and captures only its allowlisted files in a transient root-owned transaction directory. If deployment or verification fails, it removes candidate-only files, restores the prior files, reapplies the prior Compose model, verifies it with the prior contract, and removes the transaction directory.
+
+Compose rendering stays on the control plane. Runtime checks and functional verification run on the target, with the verifier and contract transferred by Ansible. A remote target therefore needs Docker and Python, not a repository checkout.
 
 This protects configuration changes. It is not a substitute for application-data backups or restore testing.
 
@@ -50,7 +54,7 @@ The validation suite includes a public-safety check in addition to Gitleaks. See
 .github/                    CI, Scorecard, Dependabot, issue/PR templates
 ansible/                    guarded deployment logic and example inventories
 docs/                       architecture, adoption, release, and maintainer docs
-recovery/                   generic functional restore-drill template
+recovery/                   restore-drill template and stateful adoption checklist
 scripts/                    deployment, validation, and safety tooling
 stacks/dozzle/              public stateless example stack
 tests/                      integrity and disposable rollback tests
@@ -120,7 +124,7 @@ A separate OpenSSF Scorecard workflow evaluates repository security practices wi
 
 ## Project scope
 
-This project is a deployment-safety blueprint, not a complete HomeLab platform. It deliberately does not provide automatic public-CI Production deployment, secret storage, firewall management, database rollback, or backup orchestration.
+This project is a deployment-safety blueprint, not a complete HomeLab platform. It deliberately does not provide automatic public-CI Production deployment, secret storage, firewall management, database rollback, or backup orchestration. Stateful services can be adopted only after their external data, secret, export, backup, and functional restore boundaries are documented and proven.
 
 See [`ROADMAP.md`](ROADMAP.md) for planned work and explicit non-goals.
 
