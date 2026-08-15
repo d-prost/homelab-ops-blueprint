@@ -24,6 +24,22 @@ Small self-hosted environments often have enough operational complexity to need 
 - disposable rollback proof in CI;
 - explicit separation between public automation and private environment data.
 
+## How it works
+
+```mermaid
+flowchart LR
+    A["Reviewed Git desired state"] --> B["Control plane renders Compose payload"]
+    B --> C["Ansible verifies the exact target identity"]
+    C --> D["Install only contract-allowlisted files"]
+    D --> E{"Functional checks pass?"}
+    E -->|Yes| F["Write the deployment receipt"]
+    E -->|No| G["Load the prior contract from Git"]
+    G --> H["Remove candidate-only files and restore prior files"]
+    H --> I["Reapply and verify the prior release"]
+```
+
+The control plane owns rendering and orchestration; the remote target only needs Docker, Compose, and Python. A successful functional check commits the deployment state. A failed check follows the recorded prior contract and restores only files that the project previously managed.
+
 ## Safety properties
 
 A Production deployment is refused unless the repository is clean, the current branch is `main`, local `main` exactly matches `origin/main`, a real Production inventory exists locally, and the target hostname exactly matches the inventory declaration.
