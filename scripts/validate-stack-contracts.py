@@ -104,7 +104,7 @@ def validate_stack(stack_dir: Path) -> None:
             raise ContractError(f"{stack}: functional check references an unknown service")
         statuses = check.get("status_codes")
         if not isinstance(statuses, list) or not statuses or any(
-            not isinstance(code, int) or code < 100 or code > 599 for code in statuses
+            not isinstance(code, int) or isinstance(code, bool) or code < 100 or code > 599 for code in statuses
         ):
             raise ContractError(f"{stack}: functional check has invalid status codes")
         check_names.add(name)

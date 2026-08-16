@@ -20,8 +20,10 @@ def validate_check(raw:object,index:int)->dict:
     if not isinstance(service,str) or not SAFE_SERVICE.fullmatch(service): raise VerificationError(f"{name}: unsafe service")
     if not isinstance(port,int) or isinstance(port,bool) or not 1<=port<=65535: raise VerificationError(f"{name}: invalid port")
     if not isinstance(path,str) or not path.startswith("/"): raise VerificationError(f"{name}: invalid path")
-    if not isinstance(codes,list) or not codes or any(not isinstance(c,int) or not 100<=c<=599 for c in codes): raise VerificationError(f"{name}: invalid status_codes")
-    if body is not None: re.compile(body)
+    if not isinstance(codes,list) or not codes or any(not isinstance(c,int) or isinstance(c,bool) or not 100<=c<=599 for c in codes): raise VerificationError(f"{name}: invalid status_codes")
+    if body is not None:
+        if not isinstance(body, str): raise VerificationError(f"{name}: body_regex must be a string")
+        re.compile(body)
     return {"name":name,"service":service,"port":port,"path":path,"status_codes":codes,"body_regex":body}
 def addresses(compose:list[str],service:str)->list[str]:
     cid=run(compose+["ps","-q",service]);

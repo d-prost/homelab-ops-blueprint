@@ -214,6 +214,12 @@ def main() -> int:
         [{"name": "dozzle-http", "service": "dozzle", "status_codes": [600]}],
         "has invalid status codes",
     )
+    # bool is a subclass of int; True must be rejected as a status code.
+    check_contract(
+        validator,
+        [{"name": "dozzle-http", "service": "dozzle", "status_codes": [True]}],
+        "has invalid status codes",
+    )
 
     # --- Runtime verifier: accepted shape ------------------------------------
     parsed = verifier.validate_check(
@@ -243,9 +249,9 @@ def main() -> int:
     expect_verification_error(
         verifier, valid_runtime_check(port=65536), 1, "invalid port"
     )
-    # Public/private boundary: path must stay absolute under the target root.
+    # Path must be an absolute HTTP path (starts with "/").
     expect_verification_error(
-        verifier, valid_runtime_check(path="../secret"), 1, "invalid path"
+        verifier, valid_runtime_check(path="relative"), 1, "invalid path"
     )
     expect_verification_error(
         verifier,
@@ -255,6 +261,14 @@ def main() -> int:
     )
     expect_verification_error(
         verifier, valid_runtime_check(status_codes=[99]), 1, "invalid status_codes"
+    )
+    # bool is a subclass of int; True must be rejected as a status code.
+    expect_verification_error(
+        verifier, valid_runtime_check(status_codes=[True]), 1, "invalid status_codes"
+    )
+    # Non-string body_regex must be rejected before re.compile is called.
+    expect_verification_error(
+        verifier, valid_runtime_check(body_regex=123), 1, "body_regex must be a string"
     )
     # An invalid body_regex fails to compile.
     expect_verification_error(
