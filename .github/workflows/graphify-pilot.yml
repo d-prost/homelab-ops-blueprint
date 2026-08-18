@@ -1,0 +1,356 @@
+---
+name: Graphify architecture pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/graphify-pilot.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graphify-pilot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pilot:
+    name: Graphify AST and semantic architecture pilot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GRAPHIFY_VERSION: "0.9.28"
+      OLLAMA_MODEL: "gemma3:4b"
+      GRAPHIFY_OLLAMA_NUM_CTX: "8192"
+      GRAPHIFY_MAX_OUTPUT_TOKENS: "16384"
+      GRAPHIFY_QUERY_LOG_DISABLE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare artifact directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/graphify-pilot-artifacts"
+          {
+            echo "base_commit=$(git rev-parse HEAD)"
+            echo "graphify_version=$GRAPHIFY_VERSION"
+            echo "ollama_model=$OLLAMA_MODEL"
+          } > "$RUNNER_TEMP/graphify-pilot-artifacts/environment.txt"
+
+      - name: Install pinned Graphify
+        run: |
+          python3 -m venv "$RUNNER_TEMP/graphify-venv"
+          "$RUNNER_TEMP/graphify-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/graphify-venv/bin/pip" install "graphifyy[ollama]==$GRAPHIFY_VERSION"
+          "$RUNNER_TEMP/graphify-venv/bin/graphify" --version | tee -a "$RUNNER_TEMP/graphify-pilot-artifacts/environment.txt"
+          "$RUNNER_TEMP/graphify-venv/bin/python" - <<'PY' | tee -a "$RUNNER_TEMP/graphify-pilot-artifacts/environment.txt"
+          import importlib.util
+          for name in ("tree_sitter", "tree_sitter_bash", "tree_sitter_json"):
+              print(f"{name}={'OK' if importlib.util.find_spec(name) else 'MISSING'}")
+          PY
+
+      - name: Run structural code-only control
+        shell: bash
+        run: |
+          set +e
+          "$RUNNER_TEMP/graphify-venv/bin/graphify" extract . \
+            --code-only \
+            --no-cluster \
+            --no-viz \
+            --timing \
+            > "$RUNNER_TEMP/graphify-pilot-artifacts/code-only.log" 2>&1
+          rc=$?
+          echo "$rc" > "$RUNNER_TEMP/graphify-pilot-artifacts/code-only.rc"
+          if [[ -d graphify-out ]]; then
+            mkdir -p "$RUNNER_TEMP/graphify-pilot-artifacts/code-only"
+            cp -a graphify-out/. "$RUNNER_TEMP/graphify-pilot-artifacts/code-only/"
+          fi
+          rm -rf graphify-out
+          exit 0
+
+      - name: Install and start local Ollama
+        shell: bash
+        run: |
+          curl --fail --show-error --silent --location https://ollama.com/install.sh \
+            -o "$RUNNER_TEMP/install-ollama.sh"
+          bash "$RUNNER_TEMP/install-ollama.sh"
+          ollama --version | tee -a "$RUNNER_TEMP/graphify-pilot-artifacts/environment.txt"
+
+          if ! curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            nohup ollama serve > "$RUNNER_TEMP/graphify-pilot-artifacts/ollama-serve.log" 2>&1 &
+          fi
+
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null
+
+          ollama pull "$OLLAMA_MODEL" | tee "$RUNNER_TEMP/graphify-pilot-artifacts/ollama-pull.log"
+          ollama list | tee -a "$RUNNER_TEMP/graphify-pilot-artifacts/environment.txt"
+
+      - name: Build implementation-only corpus
+        shell: bash
+        run: |
+          corpus="$RUNNER_TEMP/graphify-corpus"
+          rm -rf "$corpus"
+          mkdir -p "$corpus"
+
+          files=(
+            scripts/deploy-stack.sh
+            scripts/assert-ansible-hosts.sh
+            scripts/verify-compose-health.py
+            ansible/playbooks/preflight.yml
+            ansible/playbooks/deploy-stack.yml
+            ansible/roles/managed_stack/tasks/main.yml
+            ansible/group_vars/all.yml
+            stacks/dozzle/stack.yml
+            stacks/dozzle/compose.yaml
+          )
+
+          for file in "${files[@]}"; do
+            mkdir -p "$corpus/$(dirname "$file")"
+            cp -- "$file" "$corpus/$file"
+          done
+
+          printf '%s\n' "${files[@]}" > "$RUNNER_TEMP/graphify-pilot-artifacts/semantic-corpus.txt"
+          find "$corpus" -type f -print | sort >> "$RUNNER_TEMP/graphify-pilot-artifacts/semantic-corpus.txt"
+
+      - name: Run Normal Mode semantic scan with local model
+        shell: bash
+        run: |
+          corpus="$RUNNER_TEMP/graphify-corpus"
+          pushd "$corpus" >/dev/null
+          set +e
+          "$RUNNER_TEMP/graphify-venv/bin/graphify" extract . \
+            --backend ollama \
+            --model "$OLLAMA_MODEL" \
+            --no-cluster \
+            --no-viz \
+            --max-concurrency 1 \
+            --token-budget 4000 \
+            --api-timeout 900 \
+            --timing \
+            > "$RUNNER_TEMP/graphify-pilot-artifacts/semantic.log" 2>&1
+          rc=$?
+          echo "$rc" > "$RUNNER_TEMP/graphify-pilot-artifacts/semantic.rc"
+          if [[ -d graphify-out ]]; then
+            mkdir -p "$RUNNER_TEMP/graphify-pilot-artifacts/semantic"
+            cp -a graphify-out/. "$RUNNER_TEMP/graphify-pilot-artifacts/semantic/"
+          fi
+          popd >/dev/null
+          exit 0
+
+      - name: Inspect semantic graph against the Gold Set
+        shell: bash
+        run: |
+          graph="$RUNNER_TEMP/graphify-pilot-artifacts/semantic/graph.json"
+          report="$RUNNER_TEMP/graphify-pilot-artifacts/gold-set-report.md"
+          json_report="$RUNNER_TEMP/graphify-pilot-artifacts/gold-set-report.json"
+
+          if [[ ! -f "$graph" ]]; then
+            printf '# Gold Set Report\n\nSemantic graph.json was not produced.\n' > "$report"
+            printf '{"graph_present": false}\n' > "$json_report"
+            exit 0
+          fi
+
+          python3 - "$graph" "$report" "$json_report" <<'PY'
+          import json
+          import re
+          import sys
+          from collections import Counter, deque
+          from pathlib import Path
+
+          graph_path, report_path, json_path = map(Path, sys.argv[1:4])
+          data = json.loads(graph_path.read_text(encoding="utf-8"))
+          nodes = data.get("nodes", [])
+          edges = data.get("links", data.get("edges", []))
+          by_id = {str(n.get("id")): n for n in nodes}
+
+          def text(node):
+              return " | ".join(str(node.get(k, "")) for k in ("id", "label", "source_file")).lower()
+
+          def matches(pattern):
+              rx = re.compile(pattern, re.I)
+              return {nid for nid, n in by_id.items() if rx.search(text(n))}
+
+          adj = {nid: [] for nid in by_id}
+          for e in edges:
+              s, t = str(e.get("source")), str(e.get("target"))
+              if s in adj and t in adj:
+                  adj[s].append((t, e))
+                  adj[t].append((s, e))
+
+          def shortest(left, right, max_hops=4):
+              starts = matches(left)
+              goals = matches(right)
+              if not starts or not goals:
+                  return None
+              q = deque((s, [s], []) for s in starts)
+              seen = set(starts)
+              while q:
+                  cur, path, path_edges = q.popleft()
+                  if cur in goals and len(path) > 1:
+                      return path, path_edges
+                  if len(path) - 1 >= max_hops:
+                      continue
+                  for nxt, edge in adj.get(cur, []):
+                      if nxt not in seen:
+                          seen.add(nxt)
+                          q.append((nxt, path + [nxt], path_edges + [edge]))
+              return None
+
+          gold = [
+              ("G1", r"deploy-stack\.sh", r"preflight\.yml", "deploy entry reaches preflight"),
+              ("G2", r"deploy-stack\.sh", r"deploy-stack\.yml", "deploy entry reaches deploy playbook"),
+              ("G3", r"deploy-stack\.yml", r"stack\.yml|deployment contract", "playbook reaches stack contract"),
+              ("G4", r"deploy-stack\.yml", r"managed[_ -]?stack", "playbook reaches managed_stack role"),
+              ("G5", r"managed[_ -]?stack", r"candidate|compose model|compose up", "role reaches candidate Compose deployment"),
+              ("G6", r"managed[_ -]?stack", r"verify-compose-health\.py", "role reaches Python verifier"),
+              ("G7", r"verify-compose-health\.py", r"http|container|functional", "verifier reaches container/HTTP checks"),
+              ("G8", r"functional|verify-compose-health\.py", r"deployment record|record deployed git commit|\.record", "successful verification reaches deployment record"),
+              ("G9", r"failure|failed", r"rescue|rollback", "deployment failure reaches rescue"),
+              ("G10", r"rescue|rollback", r"previous contract|prior contract|previous managed files|restore prior", "rescue reaches previous contract/files"),
+              ("G11", r"rescue|rollback", r"reapply prior compose|previous compose|prior compose", "rollback reapplies previous Compose release"),
+              ("G12", r"rollback|restore prior|reapply prior", r"verify restored prior|previous release|functional verification", "rollback reaches re-verification"),
+          ]
+
+          results = []
+          for gid, left, right, description in gold:
+              found = shortest(left, right)
+              item = {"id": gid, "description": description, "found": bool(found)}
+              if found:
+                  path, path_edges = found
+                  item["hops"] = len(path) - 1
+                  item["path"] = [by_id[n].get("label", n) for n in path]
+                  item["confidences"] = [e.get("confidence", "") for e in path_edges]
+                  item["relations"] = [e.get("relation", "") for e in path_edges]
+              results.append(item)
+
+          confidence_counts = Counter(str(e.get("confidence", "UNKNOWN")) for e in edges)
+          summary = {
+              "graph_present": True,
+              "nodes": len(nodes),
+              "edges": len(edges),
+              "confidence_counts": dict(confidence_counts),
+              "gold_found": sum(1 for r in results if r["found"]),
+              "gold_total": len(results),
+              "gold_recall_proxy": round(sum(1 for r in results if r["found"]) / len(results), 4),
+              "results": results,
+          }
+          json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+          lines = [
+              "# Gold Set Report",
+              "",
+              f"- Nodes: {len(nodes)}",
+              f"- Edges: {len(edges)}",
+              f"- Confidence tags: {dict(confidence_counts)}",
+              f"- Gold relationships with a <=4-hop graph path: {summary['gold_found']}/{summary['gold_total']}",
+              "",
+              "This is a recall-oriented proxy only; precision requires manual inspection of the actual edges and provenance.",
+              "",
+          ]
+          for r in results:
+              lines.append(f"## {r['id']} - {'FOUND' if r['found'] else 'MISSING'}")
+              lines.append("")
+              lines.append(r["description"])
+              lines.append("")
+              if r["found"]:
+                  lines.append(f"- Hops: {r['hops']}")
+                  lines.append(f"- Path: {' -> '.join(r['path'])}")
+                  lines.append(f"- Relations: {r['relations']}")
+                  lines.append(f"- Confidence: {r['confidences']}")
+              lines.append("")
+
+          report_path.write_text("\n".join(lines), encoding="utf-8")
+
+          relevant = re.compile(r"deploy|preflight|stack|candidate|compose|verify|functional|record|rescue|rollback|previous|prior|http|container", re.I)
+          edge_lines = []
+          for e in edges:
+              s, t = str(e.get("source")), str(e.get("target"))
+              sl = by_id.get(s, {}).get("label", s)
+              tl = by_id.get(t, {}).get("label", t)
+              line = f"{sl} --{e.get('relation','')} [{e.get('confidence','')}]--> {tl} | source={e.get('source_file','')}"
+              if relevant.search(line):
+                  edge_lines.append(line)
+          Path(report_path.parent / "relevant-edges.txt").write_text("\n".join(edge_lines), encoding="utf-8")
+          PY
+
+      - name: Run fixed Graphify queries
+        shell: bash
+        run: |
+          graph="$RUNNER_TEMP/graphify-pilot-artifacts/semantic/graph.json"
+          output="$RUNNER_TEMP/graphify-pilot-artifacts/query-results.txt"
+          : > "$output"
+          if [[ ! -f "$graph" ]]; then
+            echo "semantic graph missing" >> "$output"
+            exit 0
+          fi
+
+          pushd "$RUNNER_TEMP/graphify-corpus" >/dev/null
+          queries=(
+            "Trace how a stack moves from the Git-controlled deploy-stack.sh entry point to a verified deployment record, including what happens when candidate verification fails."
+            "What invokes the managed_stack role?"
+            "How is verify-compose-health.py reached from deploy-stack.sh?"
+            "Trace the failure path from candidate deployment to restoration and verification of the previous release."
+          )
+          for query in "${queries[@]}"; do
+            {
+              echo "===== QUERY ====="
+              echo "$query"
+              echo "===== RESULT ====="
+              "$RUNNER_TEMP/graphify-venv/bin/graphify" query "$query" || true
+              echo
+            } >> "$output" 2>&1
+          done
+          popd >/dev/null
+
+      - name: Write pilot summary
+        if: always()
+        shell: bash
+        run: |
+          code_rc="$(cat "$RUNNER_TEMP/graphify-pilot-artifacts/code-only.rc" 2>/dev/null || echo missing)"
+          semantic_rc="$(cat "$RUNNER_TEMP/graphify-pilot-artifacts/semantic.rc" 2>/dev/null || echo missing)"
+          {
+            echo "# Graphify Pilot"
+            echo
+            echo "- Graphify: $GRAPHIFY_VERSION"
+            echo "- Semantic backend: local Ollama / $OLLAMA_MODEL"
+            echo "- Code-only extraction RC: $code_rc"
+            echo "- Semantic extraction RC: $semantic_rc"
+            echo "- Mode: Normal (Deep Mode deliberately not used)"
+            echo "- Corpus: implementation-only; README/docs excluded"
+            echo
+            if [[ -f "$RUNNER_TEMP/graphify-pilot-artifacts/gold-set-report.md" ]]; then
+              cat "$RUNNER_TEMP/graphify-pilot-artifacts/gold-set-report.md"
+            fi
+          } | tee "$RUNNER_TEMP/graphify-pilot-artifacts/PILOT_SUMMARY.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete pilot evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: graphify-pilot-evidence
+          path: ${{ runner.temp }}/graphify-pilot-artifacts
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Fail on extraction errors
+        if: always()
+        shell: bash
+        run: |
+          code_rc="$(cat "$RUNNER_TEMP/graphify-pilot-artifacts/code-only.rc" 2>/dev/null || echo 99)"
+          semantic_rc="$(cat "$RUNNER_TEMP/graphify-pilot-artifacts/semantic.rc" 2>/dev/null || echo 99)"
+          if [[ "$code_rc" != "0" || "$semantic_rc" != "0" ]]; then
+            echo "Graphify extraction failed: code-only=$code_rc semantic=$semantic_rc" >&2
+            exit 1
+          fi
