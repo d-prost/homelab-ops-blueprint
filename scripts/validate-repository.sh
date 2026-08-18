@@ -12,6 +12,7 @@ python3 scripts/check-public-safety.py
 python3 scripts/validate-stack-contracts.py
 python3 tests/test-stack-contracts.py
 python3 tests/test-functional-check-parsing.py
+python3 tests/test-operational-coverage.py
 bash tests/test-integrity-guards.sh
 if command -v yamllint >/dev/null 2>&1; then yamllint -d '{extends: default, rules: {line-length: disable, truthy: disable}}' .github ansible stacks; fi
 if command -v shellcheck >/dev/null 2>&1; then find scripts tests -type f -name '*.sh' -print0 | xargs -0 shellcheck; fi

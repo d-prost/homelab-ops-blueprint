@@ -1,0 +1,14 @@
+---
+operations:
+  services:
+    demo:
+      stateful: true
+      persistent_mounts:
+        - target: /var/lib/example
+      backup:
+        policy: critical
+      restore:
+        runbook: recovery/example.md
+        verification: functional
+      monitoring:
+        required: true
