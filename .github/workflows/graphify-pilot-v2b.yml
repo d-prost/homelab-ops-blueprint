@@ -1,0 +1,288 @@
+---
+name: Graphify architecture pilot v2b
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/graphify-pilot-v2b.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: graphify-pilot-v2b-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pilot:
+    name: Byte-preserving raw vs segmented pilot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GRAPHIFY_VERSION: "0.9.28"
+      OLLAMA_MODEL: "qwen2.5-coder:7b"
+      OLLAMA_BASE_URL: "http://127.0.0.1:11434/v1"
+      OLLAMA_API_KEY: "local"
+      GRAPHIFY_OLLAMA_NUM_CTX: "16384"
+      GRAPHIFY_MAX_OUTPUT_TOKENS: "12000"
+      GRAPHIFY_QUERY_LOG_DISABLE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare tools and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/evidence"
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/pip" install "graphifyy[ollama]==$GRAPHIFY_VERSION"
+          "$RUNNER_TEMP/venv/bin/graphify" --version | tee "$RUNNER_TEMP/evidence/graphify-version.txt"
+
+      - name: Start local Qwen2.5-Coder 7B
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location https://ollama.com/install.sh -o "$RUNNER_TEMP/install-ollama.sh"
+          bash "$RUNNER_TEMP/install-ollama.sh"
+          if ! curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            nohup ollama serve > "$RUNNER_TEMP/evidence/ollama-serve.log" 2>&1 &
+          fi
+          for _ in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull "$OLLAMA_MODEL" > "$RUNNER_TEMP/evidence/ollama-pull.log" 2>&1
+          ollama show "$OLLAMA_MODEL" > "$RUNNER_TEMP/evidence/ollama-model.txt"
+
+      - name: Build exact raw and byte-preserving segmented corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/raw"
+          seg="$RUNNER_TEMP/segmented"
+          mkdir -p "$raw" "$seg"
+          files=(
+            scripts/deploy-stack.sh
+            scripts/assert-ansible-hosts.sh
+            scripts/verify-compose-health.py
+            ansible/playbooks/preflight.yml
+            ansible/playbooks/deploy-stack.yml
+            ansible/roles/managed_stack/tasks/main.yml
+            ansible/group_vars/all.yml
+            stacks/dozzle/stack.yml
+            stacks/dozzle/compose.yaml
+          )
+          for file in "${files[@]}"; do
+            mkdir -p "$raw/$(dirname "$file")" "$seg/$(dirname "$file")"
+            cp -- "$file" "$raw/$file"
+            [[ "$file" == "ansible/roles/managed_stack/tasks/main.yml" ]] || cp -- "$file" "$seg/$file"
+          done
+
+          python3 - "$PWD/ansible/roles/managed_stack/tasks/main.yml" "$seg/ansible/roles/managed_stack/tasks" <<'PY'
+          from pathlib import Path
+          import sys
+          src = Path(sys.argv[1])
+          out = Path(sys.argv[2])
+          out.mkdir(parents=True, exist_ok=True)
+          lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+          transaction = next(i for i, x in enumerate(lines) if x.startswith("- name: Validate and deploy candidate transaction"))
+          rescue = next(i for i in range(transaction, len(lines)) if lines[i].startswith("  rescue:"))
+          always = next(i for i in range(rescue, len(lines)) if lines[i].startswith("  always:"))
+          parts = (lines[:transaction], lines[transaction:rescue], lines[rescue:always], lines[always:])
+          for i, part in enumerate(parts, 1):
+              (out / f"main__0{i}.yml").write_text("".join(part), encoding="utf-8")
+          PY
+
+          original="$(sha256sum ansible/roles/managed_stack/tasks/main.yml | awk '{print $1}')"
+          reconstructed="$(cat "$seg"/ansible/roles/managed_stack/tasks/main__*.yml | sha256sum | awk '{print $1}')"
+          printf 'original=%s\nreconstructed=%s\n' "$original" "$reconstructed" | tee "$RUNNER_TEMP/evidence/segmentation-integrity.txt"
+          [[ "$original" == "$reconstructed" ]]
+          find "$raw" -type f -printf 'raw:%P\n' | sort > "$RUNNER_TEMP/evidence/corpus-files.txt"
+          find "$seg" -type f -printf 'segmented:%P\n' | sort >> "$RUNNER_TEMP/evidence/corpus-files.txt"
+
+      - name: Write objective scorer
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/score.py" <<'PY'
+          import json, re, sys
+          from collections import defaultdict, deque
+          from pathlib import Path
+
+          variant, graph_name, out_name = sys.argv[1:4]
+          graph_path, out_path = Path(graph_name), Path(out_name)
+          if not graph_path.exists():
+              out_path.write_text(json.dumps({"variant":variant,"graph_present":False,"score":0,"total":15,"tests":[]}, indent=2))
+              raise SystemExit(0)
+          data=json.loads(graph_path.read_text())
+          nodes=data.get("nodes",[]); edges=data.get("edges",data.get("links",[]))
+          by={str(n.get("id")):n for n in nodes}
+          def src(i): return str(by.get(i,{}).get("source_file",""))
+          def lab(i): return str(by.get(i,{}).get("label",i))
+          adj=defaultdict(list)
+          for e in edges:
+              s,t=str(e.get("source")),str(e.get("target"))
+              if s in by and t in by:
+                  adj[s].append((t,e)); adj[t].append((s,e))
+          def sources(p):
+              r=re.compile(p); return {i for i in by if r.search(src(i))}
+          def labels(p,sp=None):
+              r=re.compile(p,re.I); sr=re.compile(sp) if sp else None
+              return {i for i in by if r.search(lab(i)) and (not sr or sr.search(src(i)))}
+          def path(a,b,h=5):
+              a,b=set(a),set(b)
+              if not a or not b:return None
+              q=deque((x,[x],[]) for x in a); seen=set(a)
+              while q:
+                  cur,p,pe=q.popleft()
+                  if cur in b and len(p)>1:return p,pe
+                  if len(p)-1>=h:continue
+                  for nxt,e in adj[cur]:
+                      if nxt not in seen:
+                          seen.add(nxt); q.append((nxt,p+[nxt],pe+[e]))
+          role=r"ansible/roles/managed_stack/tasks/main(?:__0[1-4])?\.yml$"
+          tests=[]
+          def presence(k,d,x): tests.append({"id":k,"description":d,"pass":bool(x),"nodes":[f"{lab(i)} [{src(i)}]" for i in sorted(x)[:10]]})
+          def route(k,d,a,b,h=5):
+              f=path(a,b,h); item={"id":k,"description":d,"pass":bool(f)}
+              if f:
+                  p,pe=f; item["path"]=[f"{lab(i)} [{src(i)}]" for i in p]; item["relations"]=[e.get("relation") for e in pe]; item["confidence"]=[e.get("confidence") for e in pe]
+              tests.append(item)
+          route("G1","deploy shell -> preflight",sources(r"scripts/deploy-stack\.sh$"),sources(r"ansible/playbooks/preflight\.yml$"),4)
+          route("G2","deploy shell -> deploy playbook",sources(r"scripts/deploy-stack\.sh$"),sources(r"ansible/playbooks/deploy-stack\.yml$"),4)
+          route("G3","deploy playbook -> real stack contract",sources(r"ansible/playbooks/deploy-stack\.yml$"),sources(r"stacks/dozzle/stack\.yml$"),4)
+          route("G4","deploy playbook -> managed_stack",sources(r"ansible/playbooks/deploy-stack\.yml$"),sources(role),4)
+          presence("G5","managed_stack nodes",sources(role))
+          presence("G6","functional verification task",labels(r"functional stack verification|run functional.*verification",role))
+          route("G7","managed_stack -> Python verifier",sources(role),sources(r"scripts/verify-compose-health\.py$"),5)
+          presence("G8","deployment record",labels(r"record deployed git commit|deployment record",role))
+          presence("G9","restore prior files",labels(r"restore prior managed files",role))
+          presence("G10","remove candidate-only files",labels(r"remove files introduced only by failed candidate|candidate-only",role))
+          presence("G11","reapply prior Compose",labels(r"reapply prior compose",role))
+          presence("G12","verify restored prior release",labels(r"verify restored prior release",role))
+          route("G13","functional verification -> deployment record",labels(r"functional stack verification|run functional.*verification",role),labels(r"record deployed git commit|deployment record",role),4)
+          route("G14","restore prior files -> prior verification",labels(r"restore prior managed files",role),labels(r"verify restored prior release",role),5)
+          route("G15","prior contract -> reapply prior Compose",labels(r"load exact prior contract|prior contract",role),labels(r"reapply prior compose",role),5)
+          per=defaultdict(int)
+          for n in nodes: per[str(n.get("source_file","<none>"))]+=1
+          cross=[]
+          for e in edges:
+              s,t=str(e.get("source")),str(e.get("target"))
+              if s in by and t in by and src(s) and src(t) and src(s)!=src(t):
+                  cross.append({"source":f"{lab(s)} [{src(s)}]","target":f"{lab(t)} [{src(t)}]","relation":e.get("relation"),"confidence":e.get("confidence"),"origin":e.get("_origin")})
+          result={"variant":variant,"graph_present":True,"nodes":len(nodes),"edges":len(edges),"score":sum(bool(t["pass"]) for t in tests),"total":15,"tests":tests,"nodes_per_source":dict(sorted(per.items())),"cross_source_edges":cross}
+          out_path.write_text(json.dumps(result,indent=2))
+          PY
+
+      - name: Extract raw corpus
+        shell: bash
+        run: |
+          set +e
+          pushd "$RUNNER_TEMP/raw" >/dev/null
+          "$RUNNER_TEMP/venv/bin/graphify" extract . --backend ollama --model "$OLLAMA_MODEL" --directed --no-cluster --no-viz --token-budget 1200 --max-concurrency 1 --api-timeout 1200 --timing > "$RUNNER_TEMP/evidence/raw.log" 2>&1
+          rc=$?; echo "$rc" > "$RUNNER_TEMP/evidence/raw.rc"
+          if [[ -d graphify-out ]]; then mkdir -p "$RUNNER_TEMP/evidence/raw"; cp -a graphify-out/. "$RUNNER_TEMP/evidence/raw/"; fi
+          popd >/dev/null
+          exit 0
+
+      - name: Score raw corpus
+        shell: bash
+        run: python3 "$RUNNER_TEMP/score.py" raw "$RUNNER_TEMP/evidence/raw/graph.json" "$RUNNER_TEMP/evidence/raw-score.json"
+
+      - name: Decide segmented diagnostic
+        id: decide
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/evidence/raw-score.json" "$GITHUB_OUTPUT" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1])); t={x["id"]:x["pass"] for x in d.get("tests",[])}
+          critical=all(t.get(k,False) for k in ("G1","G2","G4","G5","G6","G7","G13","G14"))
+          need=not (d.get("score",0)>=12 and critical)
+          print(f"raw={d.get('score')}/15 critical={critical} segmented={need}")
+          with open(sys.argv[2],"a") as f:f.write(f"needed={'true' if need else 'false'}\n")
+          PY
+
+      - name: Extract segmented corpus if needed
+        if: steps.decide.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set +e
+          pushd "$RUNNER_TEMP/segmented" >/dev/null
+          "$RUNNER_TEMP/venv/bin/graphify" extract . --backend ollama --model "$OLLAMA_MODEL" --directed --no-cluster --no-viz --token-budget 1200 --max-concurrency 1 --api-timeout 1200 --timing > "$RUNNER_TEMP/evidence/segmented.log" 2>&1
+          rc=$?; echo "$rc" > "$RUNNER_TEMP/evidence/segmented.rc"
+          if [[ -d graphify-out ]]; then mkdir -p "$RUNNER_TEMP/evidence/segmented"; cp -a graphify-out/. "$RUNNER_TEMP/evidence/segmented/"; fi
+          popd >/dev/null
+          exit 0
+
+      - name: Score segmented corpus if needed
+        if: steps.decide.outputs.needed == 'true'
+        shell: bash
+        run: python3 "$RUNNER_TEMP/score.py" segmented "$RUNNER_TEMP/evidence/segmented/graph.json" "$RUNNER_TEMP/evidence/segmented-score.json"
+
+      - name: Run fixed queries
+        shell: bash
+        run: |
+          set +e
+          queries=(
+            "How does deploy-stack.sh reach deploy-stack.yml and the managed_stack role?"
+            "Trace candidate functional verification to the deployment record."
+            "Trace rollback from restoring prior files to reapplying Compose and verifying the prior release."
+            "How is verify-compose-health.py reached from managed_stack?"
+          )
+          for variant in raw segmented; do
+            [[ -f "$RUNNER_TEMP/evidence/$variant/graph.json" ]] || continue
+            pushd "$RUNNER_TEMP/$variant" >/dev/null
+            : > "$RUNNER_TEMP/evidence/$variant-queries.txt"
+            for q in "${queries[@]}"; do
+              { echo "QUERY: $q"; "$RUNNER_TEMP/venv/bin/graphify" query "$q" || true; echo; } >> "$RUNNER_TEMP/evidence/$variant-queries.txt" 2>&1
+            done
+            popd >/dev/null
+          done
+          exit 0
+
+      - name: Summarize results
+        if: always()
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/evidence" <<'PY'
+          import json,sys
+          from pathlib import Path
+          r=Path(sys.argv[1]); rows=[]
+          for v in ("raw","segmented"):
+              p=r/f"{v}-score.json"
+              if p.exists():
+                  d=json.load(open(p)); rows.append((v,d.get("score",0),d.get("nodes",0),d.get("edges",0),len(d.get("cross_source_edges",[]))))
+          lines=["# Graphify Pilot v2b","","Graphify 0.9.28 / Normal Mode / local Qwen2.5-Coder 7B / implementation-only corpus.","","| Variant | Gold | Nodes | Edges | Cross-source edges |","|---|---:|---:|---:|---:|"]
+          for v,s,n,e,c in rows:lines.append(f"| {v} | {s}/15 | {n} | {e} | {c} |")
+          (r/"SUMMARY.md").write_text("\n".join(lines)+"\n")
+          print("\n".join(lines))
+          PY
+          cat "$RUNNER_TEMP/evidence/SUMMARY.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: graphify-pilot-v2b-evidence
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Fail only on extraction execution errors
+        if: always()
+        shell: bash
+        run: |
+          raw_rc="$(cat "$RUNNER_TEMP/evidence/raw.rc" 2>/dev/null || echo 99)"
+          [[ "$raw_rc" == "0" ]] || exit 1
+          if [[ "${{ steps.decide.outputs.needed }}" == "true" ]]; then
+            seg_rc="$(cat "$RUNNER_TEMP/evidence/segmented.rc" 2>/dev/null || echo 99)"
+            [[ "$seg_rc" == "0" ]] || exit 1
+          fi
