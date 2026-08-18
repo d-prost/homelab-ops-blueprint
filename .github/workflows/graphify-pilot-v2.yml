@@ -1,0 +1,493 @@
+---
+name: Graphify architecture pilot v2
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/graphify-pilot-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  models: read
+
+concurrency:
+  group: graphify-pilot-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pilot:
+    name: Strong-model raw vs segmented Ansible pilot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GRAPHIFY_VERSION: "0.9.28"
+      GH_MODEL: "openai/gpt-4.1"
+      GRAPHIFY_MAX_OUTPUT_TOKENS: "32768"
+      GRAPHIFY_QUERY_LOG_DISABLE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare evidence directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/graphify-v2-evidence"
+          {
+            echo "repository_commit=$(git rev-parse HEAD)"
+            echo "graphify_version=$GRAPHIFY_VERSION"
+            echo "semantic_backend=github-models-openai-compatible"
+            echo "model=$GH_MODEL"
+            echo "max_output_tokens=$GRAPHIFY_MAX_OUTPUT_TOKENS"
+            echo "token_budget=1800"
+            echo "mode=normal"
+          } > "$RUNNER_TEMP/graphify-v2-evidence/environment.txt"
+
+      - name: Install pinned Graphify with OpenAI backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/graphify-v2-venv"
+          "$RUNNER_TEMP/graphify-v2-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/graphify-v2-venv/bin/pip" install "graphifyy[openai]==$GRAPHIFY_VERSION"
+          "$RUNNER_TEMP/graphify-v2-venv/bin/graphify" --version | tee -a "$RUNNER_TEMP/graphify-v2-evidence/environment.txt"
+
+      - name: Verify GitHub Models access
+        shell: bash
+        env:
+          GH_MODELS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload = json.dumps({
+              "model": os.environ["GH_MODEL"],
+              "messages": [{"role": "user", "content": "Return only the JSON object {\"pilot\":true}."}],
+              "temperature": 0,
+              "max_tokens": 32,
+          }).encode()
+          req = urllib.request.Request(
+              "https://models.github.ai/inference/chat/completions",
+              data=payload,
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_MODELS_TOKEN']}",
+                  "Content-Type": "application/json",
+                  "Accept": "application/vnd.github+json",
+              },
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=60) as r:
+              body = json.load(r)
+          print("github_models_smoke=OK")
+          print("model=" + body.get("model", os.environ["GH_MODEL"]))
+          PY
+
+      - name: Build raw and segmented implementation corpora
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw="$RUNNER_TEMP/corpus-raw"
+          split="$RUNNER_TEMP/corpus-segmented"
+          rm -rf "$raw" "$split"
+          mkdir -p "$raw" "$split"
+
+          files=(
+            scripts/deploy-stack.sh
+            scripts/assert-ansible-hosts.sh
+            scripts/verify-compose-health.py
+            ansible/playbooks/preflight.yml
+            ansible/playbooks/deploy-stack.yml
+            ansible/roles/managed_stack/tasks/main.yml
+            ansible/group_vars/all.yml
+            stacks/dozzle/stack.yml
+            stacks/dozzle/compose.yaml
+          )
+
+          for file in "${files[@]}"; do
+            mkdir -p "$raw/$(dirname "$file")" "$split/$(dirname "$file")"
+            cp -- "$file" "$raw/$file"
+            if [[ "$file" != "ansible/roles/managed_stack/tasks/main.yml" ]]; then
+              cp -- "$file" "$split/$file"
+            fi
+          done
+
+          # Diagnostic segmentation only: preserve the exact role text, split at
+          # the transaction block's block/rescue/always boundaries. No prose or
+          # architecture hints are injected. rescue/always are merely dedented
+          # two spaces so each fragment is a standalone YAML document.
+          python3 - "$PWD/ansible/roles/managed_stack/tasks/main.yml" "$split/ansible/roles/managed_stack/tasks" <<'PY'
+          from pathlib import Path
+          import sys
+
+          src = Path(sys.argv[1])
+          out = Path(sys.argv[2])
+          out.mkdir(parents=True, exist_ok=True)
+          lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
+
+          transaction = next(i for i, line in enumerate(lines) if line.startswith("- name: Validate and deploy candidate transaction"))
+          rescue = next(i for i in range(transaction, len(lines)) if lines[i].startswith("  rescue:"))
+          always = next(i for i in range(rescue, len(lines)) if lines[i].startswith("  always:"))
+
+          (out / "main__01-prelude.yml").write_text("".join(lines[:transaction]), encoding="utf-8")
+          (out / "main__02-candidate.yml").write_text("".join(lines[transaction:rescue]), encoding="utf-8")
+
+          def dedent_two(part):
+              return "".join(line[2:] if line.startswith("  ") else line for line in part)
+
+          (out / "main__03-rescue.yml").write_text(dedent_two(lines[rescue:always]), encoding="utf-8")
+          (out / "main__04-always.yml").write_text(dedent_two(lines[always:]), encoding="utf-8")
+          PY
+
+          {
+            echo "# raw corpus"
+            find "$raw" -type f -printf '%P\n' | sort
+            echo
+            echo "# segmented corpus"
+            find "$split" -type f -printf '%P\n' | sort
+          } > "$RUNNER_TEMP/graphify-v2-evidence/corpora.txt"
+
+          wc -l ansible/roles/managed_stack/tasks/main.yml \
+            "$split"/ansible/roles/managed_stack/tasks/main__*.yml \
+            > "$RUNNER_TEMP/graphify-v2-evidence/segmentation-line-counts.txt"
+
+          original_sha="$(sha256sum ansible/roles/managed_stack/tasks/main.yml | awk '{print $1}')"
+          reconstructed_sha="$({
+            cat "$split/ansible/roles/managed_stack/tasks/main__01-prelude.yml"
+            cat "$split/ansible/roles/managed_stack/tasks/main__02-candidate.yml"
+            sed 's/^/  /' "$split/ansible/roles/managed_stack/tasks/main__03-rescue.yml"
+            sed 's/^/  /' "$split/ansible/roles/managed_stack/tasks/main__04-always.yml"
+          } | sha256sum | awk '{print $1}')"
+          printf 'original_sha256=%s\nreconstructed_sha256=%s\n' "$original_sha" "$reconstructed_sha" \
+            > "$RUNNER_TEMP/graphify-v2-evidence/segmentation-integrity.txt"
+          [[ "$original_sha" == "$reconstructed_sha" ]]
+
+      - name: Run raw corpus with strong model and conservative chunks
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_BASE_URL: https://models.github.ai/inference
+          OPENAI_MODEL: ${{ env.GH_MODEL }}
+        run: |
+          set +e
+          pushd "$RUNNER_TEMP/corpus-raw" >/dev/null
+          "$RUNNER_TEMP/graphify-v2-venv/bin/graphify" extract . \
+            --backend openai \
+            --model "$GH_MODEL" \
+            --directed \
+            --no-cluster \
+            --no-viz \
+            --token-budget 1800 \
+            --max-concurrency 1 \
+            --api-timeout 900 \
+            --timing \
+            > "$RUNNER_TEMP/graphify-v2-evidence/raw.log" 2>&1
+          rc=$?
+          echo "$rc" > "$RUNNER_TEMP/graphify-v2-evidence/raw.rc"
+          if [[ -d graphify-out ]]; then
+            mkdir -p "$RUNNER_TEMP/graphify-v2-evidence/raw"
+            cp -a graphify-out/. "$RUNNER_TEMP/graphify-v2-evidence/raw/"
+          fi
+          popd >/dev/null
+          exit 0
+
+      - name: Run segmented corpus with identical settings
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_BASE_URL: https://models.github.ai/inference
+          OPENAI_MODEL: ${{ env.GH_MODEL }}
+        run: |
+          set +e
+          pushd "$RUNNER_TEMP/corpus-segmented" >/dev/null
+          "$RUNNER_TEMP/graphify-v2-venv/bin/graphify" extract . \
+            --backend openai \
+            --model "$GH_MODEL" \
+            --directed \
+            --no-cluster \
+            --no-viz \
+            --token-budget 1800 \
+            --max-concurrency 1 \
+            --api-timeout 900 \
+            --timing \
+            > "$RUNNER_TEMP/graphify-v2-evidence/segmented.log" 2>&1
+          rc=$?
+          echo "$rc" > "$RUNNER_TEMP/graphify-v2-evidence/segmented.rc"
+          if [[ -d graphify-out ]]; then
+            mkdir -p "$RUNNER_TEMP/graphify-v2-evidence/segmented"
+            cp -a graphify-out/. "$RUNNER_TEMP/graphify-v2-evidence/segmented/"
+          fi
+          popd >/dev/null
+          exit 0
+
+      - name: Score graph structure and architecture relations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/score_graphify_v2.py" <<'PY'
+          import json
+          import re
+          import sys
+          from collections import defaultdict, deque
+          from pathlib import Path
+
+          variant = sys.argv[1]
+          graph_path = Path(sys.argv[2])
+          out_dir = Path(sys.argv[3])
+          out_dir.mkdir(parents=True, exist_ok=True)
+
+          if not graph_path.exists():
+              (out_dir / f"{variant}-score.json").write_text(json.dumps({"graph_present": False}, indent=2))
+              (out_dir / f"{variant}-score.md").write_text(f"# {variant} score\n\ngraph.json missing.\n")
+              raise SystemExit(0)
+
+          data = json.loads(graph_path.read_text(encoding="utf-8"))
+          nodes = data.get("nodes", [])
+          edges = data.get("edges", data.get("links", []))
+          by_id = {str(n.get("id")): n for n in nodes}
+
+          def sf(nid):
+              return str(by_id.get(nid, {}).get("source_file", ""))
+
+          def label(nid):
+              return str(by_id.get(nid, {}).get("label", nid))
+
+          undirected = defaultdict(list)
+          directed = defaultdict(list)
+          for e in edges:
+              s, t = str(e.get("source")), str(e.get("target"))
+              if s in by_id and t in by_id:
+                  undirected[s].append((t, e)); undirected[t].append((s, e))
+                  directed[s].append((t, e))
+
+          def nodes_for_source(pattern):
+              rx = re.compile(pattern)
+              return {nid for nid in by_id if rx.search(sf(nid))}
+
+          def nodes_for_label(pattern, source_pattern=None):
+              rx = re.compile(pattern, re.I)
+              srx = re.compile(source_pattern) if source_pattern else None
+              return {nid for nid in by_id if rx.search(label(nid)) and (not srx or srx.search(sf(nid)))}
+
+          def shortest(starts, goals, max_hops=5, graph=None):
+              graph = graph or undirected
+              starts, goals = set(starts), set(goals)
+              if not starts or not goals:
+                  return None
+              q = deque((s, [s], []) for s in starts)
+              seen = set(starts)
+              while q:
+                  cur, path, path_edges = q.popleft()
+                  if cur in goals and len(path) > 1:
+                      return path, path_edges
+                  if len(path) - 1 >= max_hops:
+                      continue
+                  for nxt, edge in graph.get(cur, []):
+                      if nxt not in seen:
+                          seen.add(nxt)
+                          q.append((nxt, path + [nxt], path_edges + [edge]))
+              return None
+
+          role_source = r"ansible/roles/managed_stack/tasks/main(?:__[^/]*)?\.yml$"
+          tests = []
+
+          def add_path(tid, description, starts, goals, max_hops=5, graph=None):
+              found = shortest(starts, goals, max_hops=max_hops, graph=graph)
+              item = {"id": tid, "description": description, "pass": bool(found)}
+              if found:
+                  path, pedges = found
+                  item["path"] = [f"{label(n)} [{sf(n)}]" for n in path]
+                  item["relations"] = [e.get("relation") for e in pedges]
+                  item["confidences"] = [e.get("confidence") for e in pedges]
+              tests.append(item)
+
+          def add_presence(tid, description, ids):
+              ids = sorted(ids)
+              tests.append({
+                  "id": tid,
+                  "description": description,
+                  "pass": bool(ids),
+                  "nodes": [f"{label(n)} [{sf(n)}]" for n in ids[:20]],
+              })
+
+          add_path("G1", "deploy-stack.sh connects to preflight.yml",
+                   nodes_for_source(r"scripts/deploy-stack\.sh$"), nodes_for_source(r"ansible/playbooks/preflight\.yml$"), 4)
+          add_path("G2", "deploy-stack.sh connects to deploy-stack.yml",
+                   nodes_for_source(r"scripts/deploy-stack\.sh$"), nodes_for_source(r"ansible/playbooks/deploy-stack\.yml$"), 4)
+          add_path("G3", "deploy-stack.yml connects to the real stacks/dozzle/stack.yml",
+                   nodes_for_source(r"ansible/playbooks/deploy-stack\.yml$"), nodes_for_source(r"stacks/dozzle/stack\.yml$"), 4)
+          add_path("G4", "deploy-stack.yml connects to managed_stack implementation",
+                   nodes_for_source(r"ansible/playbooks/deploy-stack\.yml$"), nodes_for_source(role_source), 4)
+          add_presence("G5", "managed_stack role produced semantic nodes", nodes_for_source(role_source))
+          add_presence("G6", "candidate functional verification task exists",
+                       nodes_for_label(r"functional stack verification|run functional.*verification", role_source))
+          add_path("G7", "managed_stack implementation connects to verify-compose-health.py",
+                   nodes_for_source(role_source), nodes_for_source(r"scripts/verify-compose-health\.py$"), 5)
+          add_presence("G8", "deployment record task exists",
+                       nodes_for_label(r"record deployed git commit|deployment record", role_source))
+          add_presence("G9", "restore prior managed files task exists",
+                       nodes_for_label(r"restore prior managed files", role_source))
+          add_presence("G10", "remove candidate-only files task exists",
+                       nodes_for_label(r"remove files introduced only by failed candidate|candidate-only", role_source))
+          add_presence("G11", "reapply prior Compose task exists",
+                       nodes_for_label(r"reapply prior compose", role_source))
+          add_presence("G12", "verify restored prior release task exists",
+                       nodes_for_label(r"verify restored prior release", role_source))
+          add_path("G13", "candidate verification connects to deployment record",
+                   nodes_for_label(r"functional stack verification|run functional.*verification", role_source),
+                   nodes_for_label(r"record deployed git commit|deployment record", role_source), 4)
+          add_path("G14", "rollback restore connects to prior-release verification",
+                   nodes_for_label(r"restore prior managed files", role_source),
+                   nodes_for_label(r"verify restored prior release", role_source), 5)
+          add_path("G15", "prior contract connects to rollback reapply",
+                   nodes_for_label(r"load exact prior contract|prior contract", role_source),
+                   nodes_for_label(r"reapply prior compose", role_source), 5)
+
+          cross_edges = []
+          for e in edges:
+              s, t = str(e.get("source")), str(e.get("target"))
+              if s in by_id and t in by_id and sf(s) and sf(t) and sf(s) != sf(t):
+                  cross_edges.append({
+                      "source": f"{label(s)} [{sf(s)}]",
+                      "target": f"{label(t)} [{sf(t)}]",
+                      "relation": e.get("relation"),
+                      "confidence": e.get("confidence"),
+                      "origin": e.get("_origin"),
+                  })
+
+          per_source = defaultdict(int)
+          for n in nodes:
+              per_source[str(n.get("source_file", "<none>"))] += 1
+
+          score = sum(1 for t in tests if t["pass"])
+          result = {
+              "variant": variant,
+              "graph_present": True,
+              "nodes": len(nodes),
+              "edges": len(edges),
+              "score": score,
+              "total": len(tests),
+              "tests": tests,
+              "nodes_per_source": dict(sorted(per_source.items())),
+              "cross_source_edges": cross_edges,
+          }
+          (out_dir / f"{variant}-score.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+          lines = [
+              f"# Graphify v2 - {variant}", "",
+              f"- Nodes: {len(nodes)}", f"- Edges: {len(edges)}",
+              f"- Gold score: {score}/{len(tests)}", f"- Cross-source edges: {len(cross_edges)}", "",
+              "## Nodes per source", "",
+          ]
+          for src, count in sorted(per_source.items()):
+              lines.append(f"- `{src}`: {count}")
+          lines += ["", "## Gold tests", ""]
+          for t in tests:
+              lines.append(f"### {t['id']} - {'PASS' if t['pass'] else 'FAIL'}")
+              lines.append(t["description"])
+              if t.get("path"):
+                  lines.append("- Path: " + " -> ".join(t["path"]))
+                  lines.append("- Relations: " + repr(t.get("relations")))
+                  lines.append("- Confidence: " + repr(t.get("confidences")))
+              if t.get("nodes"):
+                  for n in t["nodes"]:
+                      lines.append(f"- Node: {n}")
+              lines.append("")
+          lines += ["## Cross-source edges", ""]
+          for e in cross_edges:
+              lines.append(f"- {e['source']} --{e['relation']} [{e['confidence']}/{e['origin']}]--> {e['target']}")
+          (out_dir / f"{variant}-score.md").write_text("\n".join(lines), encoding="utf-8")
+          PY
+
+          python3 "$RUNNER_TEMP/score_graphify_v2.py" raw \
+            "$RUNNER_TEMP/graphify-v2-evidence/raw/graph.json" \
+            "$RUNNER_TEMP/graphify-v2-evidence"
+          python3 "$RUNNER_TEMP/score_graphify_v2.py" segmented \
+            "$RUNNER_TEMP/graphify-v2-evidence/segmented/graph.json" \
+            "$RUNNER_TEMP/graphify-v2-evidence"
+
+      - name: Run fixed graph queries for both variants
+        shell: bash
+        run: |
+          set +e
+          queries=(
+            "How does deploy-stack.sh reach the deploy-stack.yml playbook and managed_stack role?"
+            "Trace the candidate deployment from functional verification to the deployment record."
+            "Trace rollback from restoring prior files through reapplying Compose to verifying the previous release."
+            "How is verify-compose-health.py reached from the managed_stack role?"
+          )
+          for variant in raw segmented; do
+            corpus="$RUNNER_TEMP/corpus-$variant"
+            output="$RUNNER_TEMP/graphify-v2-evidence/$variant-queries.txt"
+            : > "$output"
+            pushd "$corpus" >/dev/null
+            for q in "${queries[@]}"; do
+              {
+                echo "===== QUERY ====="
+                echo "$q"
+                echo "===== RESULT ====="
+                "$RUNNER_TEMP/graphify-v2-venv/bin/graphify" query "$q" || true
+                echo
+              } >> "$output" 2>&1
+            done
+            popd >/dev/null
+          done
+          exit 0
+
+      - name: Write comparative summary
+        if: always()
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/graphify-v2-evidence" <<'PY'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          rows = []
+          for variant in ("raw", "segmented"):
+              p = root / f"{variant}-score.json"
+              if p.exists():
+                  d = json.loads(p.read_text())
+                  rows.append((variant, d.get("score", 0), d.get("total", 15), d.get("nodes", 0), d.get("edges", 0), len(d.get("cross_source_edges", []))))
+              else:
+                  rows.append((variant, 0, 15, 0, 0, 0))
+          lines = [
+              "# Graphify Pilot v2", "",
+              "Normal Mode, Graphify 0.9.28, GitHub Models GPT-4.1, implementation-only corpus.", "",
+              "| Variant | Gold | Nodes | Edges | Cross-source edges |",
+              "|---|---:|---:|---:|---:|",
+          ]
+          for v, s, total, n, e, cross in rows:
+              lines.append(f"| {v} | {s}/{total} | {n} | {e} | {cross} |")
+          lines += ["", "Interpretation:", "- raw succeeds: prior failure was mainly the weak/local semantic backend.", "- raw fails but segmented succeeds: Graphify needs an Ansible-specific ingestion workaround.", "- both fail: the graph model itself is not capturing the required cross-layer architecture."]
+          text = "\n".join(lines) + "\n"
+          (root / "PILOT_V2_SUMMARY.md").write_text(text, encoding="utf-8")
+          print(text)
+          PY
+
+      - name: Publish summary to job output
+        if: always()
+        shell: bash
+        run: cat "$RUNNER_TEMP/graphify-v2-evidence/PILOT_V2_SUMMARY.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complete v2 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: graphify-pilot-v2-evidence
+          path: ${{ runner.temp }}/graphify-v2-evidence
+          if-no-files-found: error
+          retention-days: 5
+
+      - name: Fail only on extraction execution errors
+        if: always()
+        shell: bash
+        run: |
+          raw_rc="$(cat "$RUNNER_TEMP/graphify-v2-evidence/raw.rc" 2>/dev/null || echo 99)"
+          segmented_rc="$(cat "$RUNNER_TEMP/graphify-v2-evidence/segmented.rc" 2>/dev/null || echo 99)"
+          echo "raw_rc=$raw_rc segmented_rc=$segmented_rc"
+          [[ "$raw_rc" == "0" && "$segmented_rc" == "0" ]]
