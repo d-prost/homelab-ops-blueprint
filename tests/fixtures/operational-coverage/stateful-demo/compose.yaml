@@ -1,0 +1,11 @@
+---
+name: operational-coverage-pilot
+
+services:
+  demo:
+    image: alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    command: ["sh", "-c", "sleep infinity"]
+    volumes:
+      - type: bind
+        source: /srv/example-data
+        target: /var/lib/example

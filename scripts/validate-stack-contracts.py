@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -140,6 +142,146 @@ def validate_stack(stack_dir: Path) -> None:
     ]
     if not images or any(not IMAGE.fullmatch(image) for image in images):
         raise ContractError(f"{stack}: images must be pinned by digest")
+
+    if "operations" in contract:
+        validate_operational_coverage(stack_dir)
+
+
+def compose_canonical_model(stack_dir: Path) -> dict:
+    compose_path = stack_dir / "compose.yaml"
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(compose_path), "config", "--format", "json"],
+            cwd=stack_dir,
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise ContractError("docker compose is required for operational coverage") from exc
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+        raise ContractError(f"docker compose config failed: {detail}")
+    try:
+        return require_mapping(json.loads(result.stdout), "Compose canonical model")
+    except json.JSONDecodeError as exc:
+        raise ContractError("docker compose config returned invalid JSON") from exc
+
+
+def _coverage_evidence(locator: str, compose_locator: str | None = None) -> list[dict[str, str]]:
+    evidence = [{"kind": "explicit", "source": "stack.yml", "locator": locator}]
+    if compose_locator:
+        evidence.append(
+            {"kind": "deterministic", "source": "docker compose canonical model", "locator": compose_locator}
+        )
+    return evidence
+
+
+def _required_identifier(mapping: dict, key: str, label: str) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str) or not SAFE_SERVICE.fullmatch(value):
+        raise ContractError(f"{label} must be a non-empty identifier")
+    return value
+
+
+def validate_operational_coverage(stack_dir: Path) -> dict:
+    stack = stack_dir.name
+    contract = require_mapping(load(stack_dir / "stack.yml"), f"{stack}:stack.yml")
+    operations = require_mapping(contract.get("operations"), f"{stack}:operations")
+    declared = require_mapping(operations.get("services"), f"{stack}:operations services")
+    canonical = compose_canonical_model(stack_dir)
+    compose_services = require_mapping(canonical.get("services"), f"{stack}:canonical services")
+    covered: list[dict] = []
+
+    for service_name, raw_ops in sorted(declared.items()):
+        if not isinstance(service_name, str) or not SAFE_SERVICE.fullmatch(service_name):
+            raise ContractError(f"{stack}:operations contains an unsafe service name")
+        if service_name not in compose_services:
+            raise ContractError(f"{stack}:{service_name}: operational coverage references unknown Compose service")
+
+        service_ops = require_mapping(raw_ops, f"{stack}:{service_name}:operations")
+        stateful = service_ops.get("stateful")
+        if not isinstance(stateful, bool):
+            raise ContractError(f"{stack}:{service_name}: stateful must be boolean")
+        if not stateful:
+            continue
+
+        canonical_service = require_mapping(
+            compose_services[service_name], f"{stack}:{service_name}:canonical service"
+        )
+        volumes = canonical_service.get("volumes") or []
+        if not isinstance(volumes, list):
+            raise ContractError(f"{stack}:{service_name}: canonical volumes must be a list")
+        canonical_mounts = {
+            volume.get("target") for volume in volumes if isinstance(volume, dict)
+        }
+
+        mounts = require_list(
+            service_ops.get("persistent_mounts"), f"{stack}:{service_name}:persistent mounts"
+        )
+        persistent_storage: list[str] = []
+        for index, raw_mount in enumerate(mounts):
+            mount = require_mapping(raw_mount, f"{stack}:{service_name}:persistent mount #{index + 1}")
+            target = mount.get("target")
+            if not isinstance(target, str) or not target.startswith("/"):
+                raise ContractError(f"{stack}:{service_name}: persistent mount target must be absolute")
+            if target in persistent_storage:
+                raise ContractError(f"{stack}:{service_name}: duplicate persistent mount target: {target}")
+            if target not in canonical_mounts:
+                raise ContractError(
+                    f"{stack}:{service_name}: persistent mount {target} is not present in canonical Compose mounts"
+                )
+            persistent_storage.append(target)
+
+        backup = require_mapping(service_ops.get("backup"), f"{stack}:{service_name}:backup")
+        backup_policy = _required_identifier(backup, "policy", f"{stack}:{service_name}:backup policy")
+        restore = require_mapping(service_ops.get("restore"), f"{stack}:{service_name}:restore")
+        restore_runbook = safe_relative_file(
+            restore.get("runbook"), f"{stack}:{service_name}:restore runbook"
+        )
+        if not (stack_dir / restore_runbook).is_file():
+            raise ContractError(f"{stack}:{service_name}: restore runbook does not exist: {restore_runbook}")
+        restore_verification = _required_identifier(
+            restore, "verification", f"{stack}:{service_name}:restore verification"
+        )
+        monitoring = require_mapping(service_ops.get("monitoring"), f"{stack}:{service_name}:monitoring")
+        monitoring_required = monitoring.get("required")
+        if not isinstance(monitoring_required, bool):
+            raise ContractError(f"{stack}:{service_name}: monitoring required must be boolean")
+
+        base = f"operations.services.{service_name}"
+        covered.append(
+            {
+                "service": service_name,
+                "stateful": True,
+                "persistent_storage": persistent_storage,
+                "backup_policy": backup_policy,
+                "restore_runbook": restore_runbook,
+                "restore_verification": restore_verification,
+                "monitoring_required": monitoring_required,
+                "provenance": {
+                    "service": _coverage_evidence(base, f"services.{service_name}"),
+                    "stateful": _coverage_evidence(f"{base}.stateful"),
+                    "persistent_storage": [
+                        {
+                            "target": target,
+                            "evidence": _coverage_evidence(
+                                f"{base}.persistent_mounts[{index}].target",
+                                f"services.{service_name}.volumes[target={target}]",
+                            ),
+                        }
+                        for index, target in enumerate(persistent_storage)
+                    ],
+                    "backup_policy": _coverage_evidence(f"{base}.backup.policy"),
+                    "restore_runbook": _coverage_evidence(f"{base}.restore.runbook"),
+                    "restore_verification": _coverage_evidence(f"{base}.restore.verification"),
+                    "monitoring_required": _coverage_evidence(f"{base}.monitoring.required"),
+                },
+            }
+        )
+
+    if not covered:
+        raise ContractError(f"{stack}: no stateful services declared for operational coverage")
+    return {"schema_version": 1, "services": covered}
 
 
 def main() -> int:
