@@ -29,6 +29,21 @@ These properties are intentionally stronger than a generic `docker compose up` w
 
 Historical releases never supply executable automation. Old payloads may describe an old stack, but they cannot replace current safety logic, current inventory, or current verification code.
 
+## Authority model
+
+CI validates repository consistency; it does not have Production deployment authority. Human review decides what enters `main`, and an operator performs a separate explicit Production convergence action.
+
+```text
+operator -> Git / pull request -> CI validation -> human review / merge -> clean main
+operator -----------------------------------------------------> explicit converge
+clean main ---------------------------------------------------> guarded converge
+                                                               |
+                                                               v
+target runtime -> functional verification -> acceptance evidence
+```
+
+This separation is deliberate. A green CI run is evidence that the repository satisfies its static and disposable proof suite; it is not permission for CI to mutate Production.
+
 ## Convergence lifecycle
 
 ```text
@@ -37,6 +52,7 @@ reviewed Git desired state
       +--> clean tree / main / origin equality guard
       +--> selected stack payload
       +--> current private inventory
+      +--> acquire the single non-blocking deployment lock
       |
       v
 control-plane preflight
@@ -66,6 +82,18 @@ runtime proof
       |
       +--> failure: enter verified rollback path
 ```
+
+## Production mutation invariants
+
+Production-changing operations should remain deliberately boring:
+
+- **One guarded mutation path.** Normal deployment and explicit rollback reuse `scripts/deploy-stack.sh`; wrappers may select a payload, but they must not create a weaker maintenance or rollback path around the Production guards.
+- **Serialized convergence.** The operator entry point uses one non-blocking `flock` lock and refuses a second concurrent deployment. Parallel mutation of the same environment is treated as an error, not as throughput to optimize.
+- **No routine-change bypass.** Image-only updates, routine maintenance, redeployments, and rollbacks are still Production mutations and must preserve the same authorization, target, verification, and recovery boundaries.
+- **Current safety logic wins.** Historical payloads may supply stack files only. They never supply historical inventories, roles, helper scripts, or safety logic.
+- **Acceptance follows runtime proof.** A deployment record is written only after target-side verification succeeds; check mode and CI validation do not create Production acceptance evidence.
+
+These rules keep convenience features from becoming parallel control planes.
 
 ## Verified rollback lifecycle
 
@@ -129,7 +157,22 @@ This split is deliberate: a local Ansible connection can conceal path and trust-
 
 Verified Convergence currently protects declared configuration convergence. It does **not** claim transactional rollback of databases, media, indexes, uploads, named volumes, application-generated state, or secrets.
 
-Stateful adoption therefore requires a separate proof boundary: application-aware export or backup, isolated restore, and functional restore verification. The stateful adoption checklist documents this requirement. Future work may turn that checklist into a machine-enforced readiness gate, but must not imply that configuration rollback is equivalent to data recovery.
+The optional `operations:` contract validates **operational coverage declarations** such as persistent mounts, backup policy identity, restore runbook, restore-verification intent, and monitoring intent. Those declarations are not evidence that the service is currently recoverable.
+
+A future Production readiness gate for a stateful stack must keep four questions separate:
+
+1. Is the state boundary declared completely?
+2. Has an isolated functional restore actually passed?
+3. Is the applicable backup evidence current enough for the environment's real backup cadence?
+4. Is the stack explicitly recovery-ready for this mutation?
+
+Snapshot existence, a green timer, or a declared restore runbook answers none of those questions by itself. Backup freshness must be derived from the real backup cadence plus a bounded operational margin; the public blueprint should not encode one universal age such as 12 or 30 hours.
+
+Routine image updates and other apparently small stateful mutations must not bypass the same readiness gate. Private backup receipts and restore evidence remain private; the public project should define the contract and validation boundary, not become the backup writer.
+
+## Ongoing monitoring boundary
+
+Target-side functional checks are **deployment acceptance checks**, not a replacement for ongoing monitoring. A private environment may use Checkmk, Prometheus, another monitoring system, or simple local checks as its runtime-health authority. The blueprint should consume only the minimum monitoring intent needed by a stack contract and should not create a second alerting or operational-truth path.
 
 ## Design constraints
 
@@ -141,8 +184,10 @@ Deliberate exclusions include:
 - no Kubernetes requirement;
 - no always-on GitOps controller requirement;
 - no automatic Production deployment from public CI;
+- no parallel Production mutation path for routine maintenance;
 - no stateful database migration automation;
 - no backup writer in the public blueprint;
+- no monitoring platform in the public blueprint;
 - no secret-store implementation in the public blueprint;
 - no firewall management framework;
 - no private infrastructure inventory;
