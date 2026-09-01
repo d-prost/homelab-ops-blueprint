@@ -35,6 +35,10 @@ Exit criterion: an operator can answer what was authorized, what target accepted
 - keep application-data recovery separate from configuration rollback;
 - provide public-safe examples without embedding real backup metadata, credentials, topology, or restore evidence.
 
+Current Phase 3 foundation: the guarded Production path now consumes a strict private readiness projection for declared stateful stacks. Evidence is bound to the exact public stack generation, must cover the exact stateful service set, must record isolated functional restore with Production unchanged, and is checked against an environment-supplied backup-freshness policy. Historical payloads cannot erase a stateful classification known to current `main`.
+
+Remaining Phase 3 work includes richer secret/export declarations, a fully synthetic stateful reference example, and any additional evidence schema needed to make the complete adoption boundary machine-checkable without importing private operational truth.
+
 Exit criterion: the project can distinguish mechanically between a declared stateful boundary, a currently recoverable service, and a merely deployable configuration, while preserving one guarded Production mutation path.
 
 ## Phase 4 — Multi-host Verified Convergence
@@ -77,7 +81,11 @@ Exit criterion: acceptance evidence can be independently checked and remains use
 - disposable rollback proof in CI;
 - public/private operational boundary;
 - operational-coverage validation for stateful declarations;
-- stateful adoption and restore-boundary documentation.
+- stateful adoption and restore-boundary documentation;
+- machine-checkable stateful recovery-readiness consumer gate;
+- exact public-generation binding for private restore evidence;
+- environment-supplied backup-freshness policy;
+- fail-closed protection against stateful routine-change and historical-classification bypasses.
 
 ## Explicit non-goals
 
@@ -87,9 +95,9 @@ Exit criterion: acceptance evidence can be independently checked and remains use
 - automatic Production deployment from public CI;
 - automatic reconciliation merely to claim "GitOps";
 - parallel Production maintenance paths or safety bypasses for routine changes;
-- storing Production inventory, credentials, backup receipts, or private operational evidence in the public repository;
+- storing Production inventory, credentials, backup receipts, readiness evidence, or private operational evidence in the public repository;
 - pretending configuration rollback is database or application-data recovery;
-- embedding one environment's backup cadence or monitoring platform into the reusable core;
+- embedding one environment's backup cadence, RPO/RTO targets, or monitoring platform into the reusable core;
 - a giant catalogue of self-hosted applications;
 - adding governance machinery without demonstrated community need.
 

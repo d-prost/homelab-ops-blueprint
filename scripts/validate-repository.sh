@@ -13,6 +13,7 @@ python3 scripts/validate-stack-contracts.py
 python3 tests/test-stack-contracts.py
 python3 tests/test-functional-check-parsing.py
 python3 tests/test-operational-coverage.py
+python3 tests/test-recovery-readiness.py
 bash tests/test-integrity-guards.sh
 bash tests/test-production-mutation-path.sh
 if command -v yamllint >/dev/null 2>&1; then yamllint -d '{extends: default, rules: {line-length: disable, truthy: disable}}' .github ansible stacks; fi
