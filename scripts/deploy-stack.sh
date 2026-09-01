@@ -160,10 +160,22 @@ if [[ "$git_ref" != "HEAD" ]]; then
   release_root="$tmp_root"
 fi
 
-[[ -f "$release_root/stacks/$stack/stack.yml" ]] || {
+stack_contract="$release_root/stacks/$stack/stack.yml"
+[[ -f "$stack_contract" ]] || {
   printf 'ERROR: stack release payload is unavailable at ref %s: %s\n' "$git_ref" "$stack" >&2
   exit 1
 }
+
+if ((production_operation == 1)); then
+  readiness_args=("$repo_root/scripts/check-recovery-readiness.py" "$stack_contract")
+  if [[ -n "${HOMELAB_RECOVERY_EVIDENCE:-}" ]]; then
+    readiness_args+=(--evidence "$HOMELAB_RECOVERY_EVIDENCE")
+  fi
+  if [[ -n "${HOMELAB_BACKUP_MAX_AGE_SECONDS:-}" ]]; then
+    readiness_args+=(--max-backup-age-seconds "$HOMELAB_BACKUP_MAX_AGE_SECONDS")
+  fi
+  python3 "${readiness_args[@]}"
+fi
 
 inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
 [[ -f "$inventory_file" ]] || {
