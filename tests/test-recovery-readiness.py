@@ -139,6 +139,16 @@ def main() -> int:
         assert result["services"] == ["db"]
         assert result["backup_age_seconds"] == 7200
 
+        stack["operations"]["services"]["db"]["stateful"] = "true"
+        write_yaml(stack_path, stack)
+        expect_error(
+            module,
+            lambda: module.recovery_proof_contract(stack_path),
+            "stateful must be boolean",
+        )
+        stack["operations"]["services"]["db"]["stateful"] = True
+        write_yaml(stack_path, stack)
+
         other_dir = public_root / "stacks" / "other-demo"
         other_stack_path = other_dir / "stack.yml"
         write_yaml(other_stack_path, make_stack(other_dir))
@@ -342,9 +352,9 @@ def main() -> int:
         assert stateless["ready"] is True
 
     print(
-        "Recovery readiness tests passed: stack identity, exact generation binding, "
-        "service coverage, objectives, rollback compatibility, freshness, isolation, "
-        "evidence trust and historical bypass protections verified."
+        "Recovery readiness tests passed: strict stateful classification, stack identity, "
+        "exact generation binding, service coverage, objectives, rollback compatibility, "
+        "freshness, isolation, evidence trust and historical bypass protections verified."
     )
     return 0
 
