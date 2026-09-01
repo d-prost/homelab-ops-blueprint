@@ -83,7 +83,10 @@ def stateful_services(stack: dict) -> dict[str, dict]:
         if not isinstance(name, str) or not name:
             raise ReadinessError("operations.services contains an invalid service name")
         service = require_mapping(raw, f"operations.services.{name}")
-        if service.get("stateful") is not True:
+        stateful = service.get("stateful")
+        if not isinstance(stateful, bool):
+            raise ReadinessError(f"operations.services.{name}.stateful must be boolean")
+        if not stateful:
             continue
         selected[name] = {
             "persistent_mounts": service.get("persistent_mounts"),
