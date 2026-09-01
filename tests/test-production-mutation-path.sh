@@ -16,6 +16,8 @@ grep -Fq -- 'homelab-ops-deploy.lock' "$deploy" || fail 'deploy path must use th
 grep -Fq -- "$lock_call" "$deploy" || fail 'deployment lock must fail closed instead of waiting or running concurrently'
 grep -Fq -- "$rollback_exec" "$rollback" || fail 'explicit rollback must reuse the guarded deployment path'
 grep -Fq -- 'check-recovery-readiness.py' "$deploy" || fail 'Production deployment must invoke the recovery readiness gate'
+grep -Fq -- '--current-contract' "$deploy" || fail 'historical payloads must be checked against current stateful classification'
+grep -Fq -- '--forbid-evidence-under' "$deploy" || fail 'private readiness evidence must stay outside the public repository tree'
 grep -Fq -- 'HOMELAB_RECOVERY_EVIDENCE' "$deploy" || fail 'Production stateful readiness must consume private evidence'
 grep -Fq -- 'HOMELAB_BACKUP_MAX_AGE_SECONDS' "$deploy" || fail 'Production stateful readiness must consume environment freshness policy'
 
