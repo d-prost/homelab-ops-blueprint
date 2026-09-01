@@ -30,11 +30,12 @@ HomeLab Ops Blueprint focuses on that middle ground:
 - success is decided by runtime behavior, not by container creation alone;
 - accepted state is recorded only after verification succeeds;
 - rollback is re-verified against the exact prior contract;
+- stateful Production mutation can require separate, private recovery-readiness evidence;
 - real topology, credentials, PKI details, backup evidence, and recovery material stay outside the public repository.
 
 ## Verified Convergence properties
 
-The current design is organized around seven properties.
+The current core design is organized around seven convergence properties, with recovery readiness as an additional gate for declared stateful stacks.
 
 | Property | Current enforcement |
 |---|---|
@@ -45,6 +46,7 @@ The current design is organized around seven properties.
 | **Functional runtime proof** | Expected Compose services and declared functional checks run on the target; `container=running` is not sufficient. |
 | **Recorded acceptance evidence** | A compact deployment record is written only after functional verification succeeds. |
 | **Verified rollback** | The role loads the exact prior contract from Git history, restores only the prior managed boundary, reapplies it, and runs the prior functional checks again. |
+| **Stateful recovery readiness** | Declared stateful Production stacks require private readiness evidence bound to the exact public stack generation, isolated functional restore proof, explicit readiness, and environment-supplied backup freshness. |
 
 The architectural details and trust boundaries are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
@@ -55,26 +57,28 @@ flowchart LR
     A["Reviewed Git state"] --> B["Control-plane preflight"]
     B --> C["Stack contract + manifest"]
     C --> D["Exact target identity"]
-    D --> E["Bounded candidate transaction"]
-    E --> F["Target-side runtime verification"]
-    F -->|pass| G["Accepted state + deployment record"]
-    F -->|fail| H["Prior deployment record"]
-    H --> I["Exact prior Git contract"]
-    I --> J["Restore prior managed boundary"]
-    J --> K["Reapply + re-verify prior runtime"]
-    K --> L["Fail closed with verified rollback"]
+    D --> E["Stateful readiness gate when required"]
+    E --> F["Bounded candidate transaction"]
+    F --> G["Target-side runtime verification"]
+    G -->|pass| H["Accepted state + deployment record"]
+    G -->|fail| I["Prior deployment record"]
+    I --> J["Exact prior Git contract"]
+    J --> K["Restore prior managed boundary"]
+    K --> L["Reapply + re-verify prior runtime"]
+    L --> M["Fail closed with verified rollback"]
 ```
 
-A successful deployment therefore answers more than “did Compose start?” It establishes which Git state authorized the change, which target accepted it, what files were allowed to change, which immutable images were used, and whether the resulting service behavior matched the declared contract.
+A successful deployment therefore answers more than “did Compose start?” It establishes which Git state authorized the change, which target accepted it, what files were allowed to change, which immutable images were used, and whether the resulting service behavior matched the declared contract. For a declared stateful stack, it also requires a separate current recovery-readiness decision before Production mutation.
 
 ## Operational invariants
 
 Several design choices are intentionally strict:
 
-- **Current safety logic always wins.** Historical releases may supply a selected stack payload, but they never replace the current inventory, preflight, Ansible role, or verifier.
+- **Current safety logic always wins.** Historical releases may supply a selected stack payload, but they never replace the current inventory, preflight, Ansible role, verifier, or recovery-readiness logic.
 - **The target does not need a Git checkout.** Compose rendering stays on the control plane; the contract and verifier are transferred to the target for runtime checks.
 - **Automatic rollback requires evidence.** If the complete prior managed-file set or exact prior contract is unavailable, the role refuses to claim a verified automatic rollback path.
 - **Rollback is configuration-scoped.** Databases, media, indexes, uploads, named volumes, application-generated state, and secrets are outside the transactional configuration boundary.
+- **Stateful mutation has no convenience bypass.** Image updates, redeployments, Production Check Mode, and historical deployments use the same readiness decision when the selected or current contract is stateful.
 - **The public repository stays public-safe.** Real Production inventory, credentials, private PKI, backup receipts, and recovery material remain private.
 
 ## A stack is a deployment contract
@@ -95,9 +99,9 @@ See [`stacks/dozzle/`](stacks/dozzle/) for the public stateless reference implem
 
 ## Current maturity
 
-The repository currently implements and tests the single-host, stateless Verified Convergence path, including disposable rollback proof in GitHub Actions.
+The repository implements and tests the single-host stateless Verified Convergence path, including disposable rollback proof in GitHub Actions. It also implements the first Phase 3 stateful foundation: a consumer-side Production readiness gate that keeps private recovery evidence outside public Git and binds that evidence to the exact public stack generation.
 
-Remote-target execution is implemented without target-side repository checkouts, but the project still requires a bounded real remote deployment before claiming that property is proven end to end. Rich machine-readable receipts, stateful readiness gates, multi-host convergence, and independent evidence verification are roadmap work, not current guarantees.
+Remote-target execution is implemented without target-side repository checkouts, but the project still requires a bounded real remote deployment before claiming that property is proven end to end. Rich deployment receipts, complete stateful secret/export declarations, a synthetic Production-adoptable stateful example, multi-host convergence, and independent evidence verification remain roadmap work.
 
 See [`ROADMAP.md`](ROADMAP.md) for explicit exit criteria for each phase.
 
@@ -166,18 +170,20 @@ make ci           # strict validation, including Gitleaks when installed by CI
 
 GitHub Actions currently runs two independent validation classes:
 
-1. **Static validation** — Bash/Python/YAML validation, stack-contract tests, Ansible syntax checks, public-safety checks, and complete-history secret scanning.
+1. **Static validation** — Bash/Python/YAML validation, stack-contract tests, recovery-readiness failure-path tests, Ansible syntax checks, public-safety checks, and complete-history secret scanning.
 2. **Disposable rollback proof** — a real Dozzle deployment on a disposable runner, intentional failure injection, automatic configuration rollback, SHA-256 comparison, and functional HTTP verification after restoration.
 
 A separate OpenSSF Scorecard workflow evaluates repository security practices, and Dependabot tracks pinned GitHub Actions dependencies.
 
 ## Stateful services and recovery
 
-Verified Convergence currently protects **declared configuration state**. It does not make application data transactional.
+Verified Convergence protects **declared configuration state**. It does not make application data transactional.
 
 A stateful service is not considered safely adoptable merely because its Compose deployment can roll back. Its data boundary, secrets, exports, backups, isolated restore procedure, and functional restore checks must be defined separately.
 
-Use [`recovery/STATEFUL_ADOPTION_CHECKLIST.md`](recovery/STATEFUL_ADOPTION_CHECKLIST.md) before treating a stateful stack as Production-adoptable, and [`recovery/RESTORE_DRILL_TEMPLATE.md`](recovery/RESTORE_DRILL_TEMPLATE.md) to document restore evidence.
+The Production readiness gate consumes only a compact private evidence projection. It requires an exact public-generation hash, exact stateful-service coverage, isolated functional restore proof with Production unchanged, explicit `ready` disposition, and an environment-supplied backup-freshness policy. Real backup identifiers and drill evidence remain private.
+
+See [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md), use [`recovery/STATEFUL_ADOPTION_CHECKLIST.md`](recovery/STATEFUL_ADOPTION_CHECKLIST.md) before adoption, and use [`recovery/RESTORE_DRILL_TEMPLATE.md`](recovery/RESTORE_DRILL_TEMPLATE.md) to structure private restore evidence.
 
 ## Public/private boundary
 
@@ -185,7 +191,7 @@ The public blueprint deliberately excludes identifying or sensitive operational 
 
 - real Production hostnames, IP addresses, DNS zones, and VPN details;
 - passwords, API tokens, private keys, recovery codes, and secret `.env` files;
-- backup credentials, Snapshot IDs, Run IDs, and real restore evidence;
+- backup credentials, Snapshot IDs, Run IDs, readiness evidence, and real restore evidence;
 - firewall exports, incident logs, private audit evidence, and PKI internals;
 - break-glass procedures and private recovery material.
 
@@ -203,6 +209,7 @@ HomeLab Ops Blueprint is intentionally narrow. It is a deployment-safety referen
 | Immutable image enforcement | FluxCD or ArgoCD as a required control plane |
 | Functional target-side verification | Always-on reconciliation merely to claim GitOps |
 | Configuration rollback with prior-contract re-verification | Database or application-data rollback |
+| Stateful recovery-readiness consumer gate | Backup writing or private restore-evidence storage |
 | Public-safe reusable automation | Production secrets, topology, PKI, and backup evidence |
 | Focused reference stacks | A large catalogue of self-hosted applications |
 
@@ -215,15 +222,16 @@ New dependencies and abstractions should strengthen a Verified Convergence prope
 | `.github/` | CI, OpenSSF Scorecard, Dependabot, issue and PR templates |
 | `ansible/` | guarded convergence logic, roles, playbooks, and example inventories |
 | `stacks/` | public-safe stack contracts and payloads |
-| `scripts/` | deployment, rollback, validation, verification, and safety tooling |
-| `tests/` | contract, integrity, operational, and disposable rollback proofs |
+| `scripts/` | deployment, rollback, readiness, validation, verification, and safety tooling |
+| `tests/` | contract, readiness, integrity, operational, and disposable rollback proofs |
 | `recovery/` | stateful-adoption and restore-drill templates |
-| `docs/` | architecture, adoption, release, publishing, and maintainer documentation |
+| `docs/` | architecture, adoption, recovery-readiness, release, publishing, and maintainer documentation |
 
 ## Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Verified Convergence properties, trust boundaries, lifecycle, and design constraints.
 - [`docs/ADOPTION.md`](docs/ADOPTION.md) — how to adapt the blueprint without weakening its safety model.
+- [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — private-evidence schema, generation binding, trust boundary, and fail-closed stateful gate.
 - [`ROADMAP.md`](ROADMAP.md) — proof-driven development phases and explicit non-goals.
 - [`PROJECT_MANIFEST.md`](PROJECT_MANIFEST.md) — implemented capabilities and validation expectations.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution requirements and review policy.
