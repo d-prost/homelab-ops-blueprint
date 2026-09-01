@@ -50,6 +50,12 @@ def require_exact_keys(mapping: dict, required: set[str], label: str) -> None:
         raise ReadinessError(f"{label} contains unsupported field(s): {', '.join(unknown)}")
 
 
+def require_true_fields(mapping: dict, keys: tuple[str, ...], label: str) -> None:
+    for key in keys:
+        if mapping.get(key) is not True:
+            raise ReadinessError(f"{label}.{key} must be true")
+
+
 def safe_relative_file(value: object, label: str) -> str:
     if not isinstance(value, str) or not value or value.endswith("/"):
         raise ReadinessError(f"{label} must be a safe relative file")
@@ -240,6 +246,8 @@ def validate_evidence(
             "covered_services",
             "disposition",
             "isolated_restore",
+            "recovery_objectives",
+            "rollback_compatibility",
             "backup_receipt",
         },
         "recovery evidence",
@@ -263,9 +271,31 @@ def validate_evidence(
         {"passed", "functional_verification", "production_unchanged"},
         "isolated_restore",
     )
-    for key in ("passed", "functional_verification", "production_unchanged"):
-        if restore.get(key) is not True:
-            raise ReadinessError(f"isolated_restore.{key} must be true")
+    require_true_fields(
+        restore,
+        ("passed", "functional_verification", "production_unchanged"),
+        "isolated_restore",
+    )
+
+    objectives = require_mapping(
+        evidence.get("recovery_objectives"), "recovery_objectives"
+    )
+    require_exact_keys(objectives, {"rpo_met", "rto_met"}, "recovery_objectives")
+    require_true_fields(objectives, ("rpo_met", "rto_met"), "recovery_objectives")
+
+    rollback = require_mapping(
+        evidence.get("rollback_compatibility"), "rollback_compatibility"
+    )
+    require_exact_keys(
+        rollback,
+        {"configuration_rollback_safe"},
+        "rollback_compatibility",
+    )
+    require_true_fields(
+        rollback,
+        ("configuration_rollback_safe",),
+        "rollback_compatibility",
+    )
 
     backup = require_mapping(evidence.get("backup_receipt"), "backup_receipt")
     require_exact_keys(backup, {"observed_at"}, "backup_receipt")
