@@ -89,9 +89,10 @@ def stateful_services(stack: dict) -> dict[str, dict]:
 
 def recovery_proof_contract(stack_path: Path) -> dict:
     stack = load_yaml(stack_path)
+    stack_name = stack_path.parent.name
     services = stateful_services(stack)
     if not services:
-        return {"schema_version": 1, "services": {}}
+        return {"schema_version": 1, "stack": stack_name, "services": {}}
 
     stack_dir = stack_path.parent
     managed_files = stack.get("stack_managed_files")
@@ -120,6 +121,7 @@ def recovery_proof_contract(stack_path: Path) -> dict:
 
     return {
         "schema_version": 1,
+        "stack": stack_name,
         "services": services,
         "runtime_contract": {
             "stack_compose_dest": stack.get("stack_compose_dest"),
@@ -198,6 +200,7 @@ def validate_evidence(
     forbidden_evidence_root: Path | None = None,
 ) -> dict:
     contract = recovery_proof_contract(stack_path)
+    stack_name = contract["stack"]
     services = sorted(contract["services"])
     digest = contract_hash(contract)
 
@@ -212,6 +215,7 @@ def validate_evidence(
             )
         return {
             "schema_version": 1,
+            "stack": stack_name,
             "stateful": False,
             "ready": True,
             "contract_hash": digest,
@@ -278,6 +282,7 @@ def validate_evidence(
 
     return {
         "schema_version": 1,
+        "stack": stack_name,
         "stateful": True,
         "ready": True,
         "contract_hash": digest,
