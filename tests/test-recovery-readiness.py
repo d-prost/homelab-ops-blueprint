@@ -133,8 +133,21 @@ def main() -> int:
         result = validate(module, stack_path, evidence_path, public_root)
         assert result["ready"] is True
         assert result["stateful"] is True
+        assert result["stack"] == "stateful-demo"
         assert result["services"] == ["db"]
         assert result["backup_age_seconds"] == 7200
+
+        other_dir = public_root / "stacks" / "other-demo"
+        other_stack_path = other_dir / "stack.yml"
+        write_yaml(other_stack_path, make_stack(other_dir))
+        assert module.contract_hash(module.recovery_proof_contract(stack_path)) != module.contract_hash(
+            module.recovery_proof_contract(other_stack_path)
+        )
+        expect_error(
+            module,
+            lambda: validate(module, other_stack_path, evidence_path, public_root),
+            "does not match the current public stack generation",
+        )
 
         stale = make_evidence(module, stack_path, "2026-09-01T18:00:00Z")
         write_json(evidence_path, stale)
@@ -267,12 +280,13 @@ def main() -> int:
             None,
             module.parse_utc(NOW, "test now"),
         )
+        assert stateless["stack"] == "stateless"
         assert stateless["stateful"] is False
         assert stateless["ready"] is True
 
     print(
-        "Recovery readiness tests passed: exact generation binding, service coverage, "
-        "freshness, isolation, evidence trust and historical bypass protections verified."
+        "Recovery readiness tests passed: stack identity, exact generation binding, "
+        "service coverage, freshness, isolation, evidence trust and historical bypass protections verified."
     )
     return 0
 
