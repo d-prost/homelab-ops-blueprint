@@ -100,6 +100,8 @@ def make_evidence(module, stack_path: Path, observed_at: str = FRESH) -> dict:
             "functional_verification": True,
             "production_unchanged": True,
         },
+        "recovery_objectives": {"rpo_met": True, "rto_met": True},
+        "rollback_compatibility": {"configuration_rollback_safe": True},
         "backup_receipt": {"observed_at": observed_at},
     }
 
@@ -149,12 +151,41 @@ def main() -> int:
             "does not match the current public stack generation",
         )
 
+        expect_error(
+            module,
+            lambda: module.validate_evidence(
+                stack_path,
+                None,
+                10800,
+                module.parse_utc(NOW, "test now"),
+            ),
+            "requires --evidence",
+        )
+        expect_error(
+            module,
+            lambda: module.validate_evidence(
+                stack_path,
+                evidence_path,
+                None,
+                module.parse_utc(NOW, "test now"),
+            ),
+            "requires a positive --max-backup-age-seconds",
+        )
+
         stale = make_evidence(module, stack_path, "2026-09-01T18:00:00Z")
         write_json(evidence_path, stale)
         expect_error(
             module,
             lambda: validate(module, stack_path, evidence_path, public_root),
             "backup evidence is stale",
+        )
+
+        future = make_evidence(module, stack_path, "2026-09-02T00:00:00Z")
+        write_json(evidence_path, future)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, evidence_path, public_root),
+            "is in the future",
         )
 
         wrong_contract = make_evidence(module, stack_path)
@@ -182,6 +213,24 @@ def main() -> int:
             module,
             lambda: validate(module, stack_path, evidence_path, public_root),
             "isolated_restore.production_unchanged must be true",
+        )
+
+        objectives_failed = make_evidence(module, stack_path)
+        objectives_failed["recovery_objectives"]["rto_met"] = False
+        write_json(evidence_path, objectives_failed)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, evidence_path, public_root),
+            "recovery_objectives.rto_met must be true",
+        )
+
+        rollback_unsafe = make_evidence(module, stack_path)
+        rollback_unsafe["rollback_compatibility"]["configuration_rollback_safe"] = False
+        write_json(evidence_path, rollback_unsafe)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, evidence_path, public_root),
+            "rollback_compatibility.configuration_rollback_safe must be true",
         )
 
         incomplete_coverage = make_evidence(module, stack_path)
@@ -258,6 +307,14 @@ def main() -> int:
         )
         evidence_path.chmod(0o600)
 
+        symlink_path = private_root / "readiness-link.json"
+        symlink_path.symlink_to(evidence_path)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, symlink_path, public_root),
+            "must not be a symlink",
+        )
+
         historical_path = root / "historical" / "stack.yml"
         write_yaml(historical_path, {"stack_expected_services": ["db"]})
         expect_error(
@@ -286,7 +343,8 @@ def main() -> int:
 
     print(
         "Recovery readiness tests passed: stack identity, exact generation binding, "
-        "service coverage, freshness, isolation, evidence trust and historical bypass protections verified."
+        "service coverage, objectives, rollback compatibility, freshness, isolation, "
+        "evidence trust and historical bypass protections verified."
     )
     return 0
 
