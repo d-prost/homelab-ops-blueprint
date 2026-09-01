@@ -167,7 +167,15 @@ stack_contract="$release_root/stacks/$stack/stack.yml"
 }
 
 if ((production_operation == 1)); then
-  readiness_args=("$repo_root/scripts/check-recovery-readiness.py" "$stack_contract")
+  readiness_args=(
+    "$repo_root/scripts/check-recovery-readiness.py"
+    "$stack_contract"
+    --forbid-evidence-under "$repo_root"
+  )
+  current_stack_contract="$repo_root/stacks/$stack/stack.yml"
+  if [[ -f "$current_stack_contract" ]]; then
+    readiness_args+=(--current-contract "$current_stack_contract")
+  fi
   if [[ -n "${HOMELAB_RECOVERY_EVIDENCE:-}" ]]; then
     readiness_args+=(--evidence "$HOMELAB_RECOVERY_EVIDENCE")
   fi
