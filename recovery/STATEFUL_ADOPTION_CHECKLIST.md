@@ -13,7 +13,8 @@ Document these items before adoption:
 - filesystem snapshot or backup class;
 - functional recovery checks using representative data;
 - target and measured RPO/RTO;
-- rollback rule for configuration and the explicit rule that persistent data is never rolled back automatically.
+- rollback rule for configuration and the explicit rule that persistent data is never rolled back automatically;
+- whether the previously accepted image/configuration generation remains compatible with data or schema changes made by the candidate.
 
 Classify every backup input as either **required** or **optional**. A missing required path must fail before creating a snapshot. Optional paths must be explicitly declared and reported as skipped. Resolve dynamic staging paths before validation; never validate a literal variable expression as though it were a filesystem path.
 
@@ -28,11 +29,13 @@ Before changing a stateful service from observed to managed:
 5. complete an isolated restore from the real backup path with Production unchanged;
 6. verify authentication plus representative record, file, media, or search access;
 7. record the backup source, restore target, result, and measured RPO/RTO without publishing private evidence;
-8. generate the exact public stack-generation hash with `scripts/check-recovery-readiness.py --print-contract-hash`;
-9. create the strict private readiness projection described in `docs/RECOVERY_READINESS.md`, covering the exact stateful service set and using `ready` only when the applicable recovery objectives are satisfied;
-10. derive the backup-freshness limit from the real backup cadence plus a bounded operational margin;
-11. keep the readiness JSON outside the public repository tree and ensure it is not group- or world-writable;
-12. run a check-mode deployment followed by one bounded real deployment through the same guarded Production path.
+8. confirm the applicable RPO and RTO objectives were met;
+9. confirm configuration rollback to the previously accepted generation is safe after candidate failure; schema-sensitive or migration-heavy changes that cannot prove this are not eligible for the guarded stateful path;
+10. generate the exact public stack-generation hash with `scripts/check-recovery-readiness.py --print-contract-hash`;
+11. create the strict private readiness projection described in `docs/RECOVERY_READINESS.md`, covering the exact stateful service set and using `ready` only when all readiness assertions are true;
+12. derive the backup-freshness limit from the real backup cadence plus a bounded operational margin; for multiple required inputs, project the oldest applicable backup observation;
+13. keep the readiness JSON outside the public repository tree and ensure it is not group- or world-writable;
+14. run a check-mode deployment followed by one bounded real deployment through the same guarded Production path.
 
 ## Ongoing rule
 
