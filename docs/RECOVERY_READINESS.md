@@ -9,14 +9,18 @@ The public blueprint therefore defines a **consumer-side readiness gate**. It do
 For a stateful stack, Production readiness is accepted only when all of these are true:
 
 1. the public `operations:` contract declares the state boundary;
-2. private evidence is bound to the exact public stack generation for which recovery was proven;
+2. private evidence is bound to the exact public stack name and generation for which recovery was proven;
 3. the evidence explicitly covers the complete stateful service set;
 4. an isolated restore passed without changing Production;
 5. the restored service passed functional verification, not only a container or file-existence check;
-6. the private evidence has an explicit `ready` disposition;
-7. backup evidence is fresh enough for an environment-supplied policy.
+6. the environment confirms its applicable RPO and RTO objectives were met;
+7. configuration rollback to the previously accepted deployment state is safe for this candidate;
+8. the private evidence has an explicit `ready` disposition;
+9. backup evidence is fresh enough for an environment-supplied policy.
 
-The freshness policy is intentionally not embedded in this repository. A real environment derives it from its backup cadence plus a bounded operational margin and passes the resulting maximum age to the gate. RPO/RTO targets also remain environment decisions; the private evidence producer should not emit `ready` when its applicable recovery objectives are not satisfied.
+The freshness policy is intentionally not embedded in this repository. A real environment derives it from its backup cadence plus a bounded operational margin and passes the resulting maximum age to the gate. When a stack depends on more than one required backup input, `backup_receipt.observed_at` must represent the **oldest required applicable backup evidence**, so one fresh component cannot hide a stale dependency.
+
+RPO/RTO target values remain private environment decisions. The public projection carries only `rpo_met` and `rto_met` booleans.
 
 ## Exact public-generation binding
 
@@ -24,6 +28,7 @@ A restore proof can become obsolete even when mount and backup declarations did 
 
 The gate therefore hashes a versioned recovery-proof contract containing:
 
+- the public stack name, preventing cross-stack evidence replay;
 - stateful `persistent_mounts`, `backup`, and `restore` declarations;
 - expected services and functional deployment checks;
 - the declared managed-file contract;
@@ -57,13 +62,22 @@ Store the compact readiness projection outside the public repository tree. The a
     "functional_verification": true,
     "production_unchanged": true
   },
+  "recovery_objectives": {
+    "rpo_met": true,
+    "rto_met": true
+  },
+  "rollback_compatibility": {
+    "configuration_rollback_safe": true
+  },
   "backup_receipt": {
     "observed_at": "2026-01-01T12:00:00Z"
   }
 }
 ```
 
-Unknown fields are rejected. Real repository URLs, Snapshot IDs, Run IDs, credentials, hostnames, restored object identifiers, screenshots, and detailed drill evidence remain private and are not part of the public consumer contract.
+Unknown fields are rejected. Real RPO/RTO values, repository URLs, Snapshot IDs, Run IDs, credentials, hostnames, restored object identifiers, screenshots, and detailed drill evidence remain private and are not part of the public consumer contract.
+
+`configuration_rollback_safe` is deliberately separate from restore success. It asserts that returning to the previously accepted image/configuration generation after candidate verification failure will not create an unsafe data/schema mismatch. Schema-sensitive, migration-heavy, database-major, or otherwise rollback-incompatible changes must not be represented as ready for this guarded path.
 
 The evidence file must be a regular non-symlink file, must not be group- or world-writable, and must live outside the public repository tree. These checks prevent an ignored file inside the public clone or an easily replaceable local file from silently becoming Production authorization input.
 
@@ -88,10 +102,12 @@ The gate fails closed when:
 
 - the evidence schema is unsupported, incomplete, or contains unknown fields;
 - the evidence file violates its local trust boundary;
-- the contract hash differs from the selected public stack generation;
+- the contract hash differs from the selected public stack generation or stack identity;
 - the evidence does not cover the exact stateful service set;
 - the disposition is not `ready`;
 - the isolated restore, functional verification, or Production-isolation assertion is false;
+- RPO or RTO objectives are not confirmed as met;
+- configuration rollback is not confirmed safe for the candidate;
 - the backup receipt timestamp is invalid, in the future, or older than the supplied freshness policy;
 - a stateful Production operation omits private evidence or freshness policy;
 - a historical payload would erase a stateful classification known to the current control plane.
