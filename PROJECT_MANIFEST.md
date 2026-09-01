@@ -49,9 +49,11 @@ Its central engineering idea is **Verified Convergence**: a Production state is 
 
 - operational-coverage validation remains separate from recovery proof;
 - Production readiness consumes a compact private JSON projection rather than private restore records;
-- readiness evidence is bound to the exact public stack generation, including managed payload and restore-runbook hashes;
+- readiness evidence is bound to the public stack identity and exact generation, including managed payload and restore-runbook hashes;
 - exact stateful-service coverage is required;
 - isolated restore, functional verification, Production unchanged, and explicit `ready` disposition are required;
+- private RPO and RTO targets remain private while the projection must confirm both objectives were met;
+- configuration rollback must be explicitly confirmed compatible with the candidate before the guarded stateful path is allowed;
 - backup freshness is supplied by the private environment rather than hard-coded publicly;
 - private evidence must live outside the public repository tree and must not be group- or world-writable;
 - historical payloads cannot silently erase a stateful classification known to current `main`;
