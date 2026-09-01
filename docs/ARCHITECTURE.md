@@ -137,6 +137,8 @@ prior runtime proof
 
 A rollback is therefore successful only when the previous configuration state is both restored and functionally re-proven. This says nothing about automatic restoration of persistent application data.
 
+For a declared stateful candidate, the readiness projection must separately assert that configuration rollback to the previously accepted deployment generation is compatible with the candidate's data/schema behavior. Schema-sensitive or migration-heavy changes that cannot make that assertion are outside the guarded stateful path.
+
 ## Evidence model
 
 Today the implementation records a compact deployment receipt containing the stack, accepted Git commit, target directory, and verification class. The long-term evidence model is intentionally machine-readable and should allow an independent verifier to answer:
@@ -150,7 +152,7 @@ Today the implementation records a compact deployment receipt containing the sta
 - Which previous accepted state is available for rollback?
 - Was rollback itself re-verified when used?
 
-Stateful readiness uses a separate private evidence projection because real backup receipts and restore drill records belong to the private operations boundary. The public project validates only the minimum readiness facts needed to authorize the mutation.
+Stateful readiness uses a separate private evidence projection because real backup receipts, RPO/RTO values, and restore drill records belong to the private operations boundary. The public project validates only the minimum readiness facts needed to authorize the mutation.
 
 Future evidence work must extend the existing safety model rather than create a parallel deployment path.
 
@@ -166,18 +168,21 @@ Verified Convergence protects declared configuration convergence. It does **not*
 
 The optional `operations:` contract validates **operational coverage declarations** such as persistent mounts, backup policy identity, restore runbook, restore-verification intent, and monitoring intent. Those declarations are not evidence that the service is currently recoverable.
 
-The implemented consumer-side Production readiness gate keeps four questions separate:
+The implemented consumer-side Production readiness gate keeps these questions separate:
 
 1. Is the state boundary declared?
 2. Has an isolated functional restore actually passed without changing Production?
-3. Is the applicable backup evidence current enough for the environment's real backup cadence?
-4. Is the stack explicitly recovery-ready for this exact public stack generation?
+3. Did that evidence cover the exact stateful service set?
+4. Were the environment's applicable RPO and RTO objectives met?
+5. Is the applicable backup evidence current enough for the environment's real backup cadence?
+6. Is configuration rollback to the previously accepted deployment generation safe for this candidate?
+7. Is the stack explicitly recovery-ready for this exact public stack identity and generation?
 
-Snapshot existence, a green timer, or a declared restore runbook answers none of those questions by itself. Backup freshness is derived from the real backup cadence plus a bounded operational margin; the public blueprint does not encode one universal age such as 12 or 30 hours.
+Snapshot existence, a green timer, or a declared restore runbook answers none of those questions by itself. Backup freshness is derived from the real backup cadence plus a bounded operational margin; the public blueprint does not encode one universal age such as 12 or 30 hours. For multiple required backup inputs, the projected observation time represents the oldest applicable required evidence.
 
 ### Recovery-proof applicability
 
-Restore compatibility can change even when persistent mounts do not. The readiness gate therefore binds private evidence to a deterministic hash over recovery-relevant stateful declarations plus the public runtime generation: expected services, functional checks, managed-file contract, hashes of all managed public payload files, and hashes of referenced restore runbooks.
+Restore compatibility can change even when persistent mounts do not. The readiness gate therefore binds private evidence to a deterministic hash over the public stack identity, recovery-relevant stateful declarations, and the public runtime generation: expected services, functional checks, managed-file contract, hashes of all managed public payload files, and hashes of referenced restore runbooks.
 
 This deliberately invalidates old readiness evidence after image, Compose, managed public configuration, storage, backup, restore, or runbook changes. Monitoring-only intent is outside that hash.
 
@@ -185,9 +190,9 @@ The hash identifies applicability; it is not a cryptographic signature or proof 
 
 ### Private evidence trust boundary
 
-The public consumer accepts a strict JSON projection containing the exact covered service set, explicit `ready` disposition, isolated-restore pass, functional-verification pass, Production-unchanged assertion, and backup-observation timestamp. Unknown fields are rejected so the public implementation cannot silently grow dependencies on private metadata.
+The public consumer accepts a strict JSON projection containing the exact covered service set, explicit `ready` disposition, isolated-restore pass, functional-verification pass, Production-unchanged assertion, RPO/RTO-met assertions, configuration-rollback compatibility, and backup-observation timestamp. Unknown fields are rejected so the public implementation cannot silently grow dependencies on private metadata.
 
-The evidence file must live outside the public repository tree, must be a regular non-symlink file, and must not be group- or world-writable. Repository URLs, snapshot IDs, run IDs, credentials, restored object identifiers, screenshots, and detailed restore records remain private.
+The evidence file must live outside the public repository tree, must be a regular non-symlink file, and must not be group- or world-writable. Repository URLs, snapshot IDs, run IDs, credentials, exact recovery objective values, restored object identifiers, screenshots, and detailed restore records remain private.
 
 Routine image updates and other apparently small stateful mutations do not bypass the gate. Private backup receipts and restore evidence remain private; the public project defines the contract and validation boundary, not the backup writer.
 
