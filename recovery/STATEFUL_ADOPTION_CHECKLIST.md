@@ -25,11 +25,17 @@ Before changing a stateful service from observed to managed:
 2. remove secrets and generated Runtime state from the Git payload;
 3. validate `stack.yml` against `MANIFEST.tsv`;
 4. create a database-aware export when the application uses a database;
-5. complete an isolated restore from the real backup path;
+5. complete an isolated restore from the real backup path with Production unchanged;
 6. verify authentication plus representative record, file, media, or search access;
 7. record the backup source, restore target, result, and measured RPO/RTO without publishing private evidence;
-8. run a check-mode deployment followed by one bounded real deployment.
+8. generate the exact public stack-generation hash with `scripts/check-recovery-readiness.py --print-contract-hash`;
+9. create the strict private readiness projection described in `docs/RECOVERY_READINESS.md`, covering the exact stateful service set and using `ready` only when the applicable recovery objectives are satisfied;
+10. derive the backup-freshness limit from the real backup cadence plus a bounded operational margin;
+11. keep the readiness JSON outside the public repository tree and ensure it is not group- or world-writable;
+12. run a check-mode deployment followed by one bounded real deployment through the same guarded Production path.
 
 ## Ongoing rule
 
-Repeat the restore proof after a material change to the storage layout, database engine, backup writer, encryption, or secret boundary. A green timer, successful snapshot creation, or `container=running` is not recovery evidence.
+Repeat the restore proof after a material change to the storage layout, database engine, container image generation, managed application configuration, backup writer, encryption, secret boundary, or restore procedure. The public generation hash intentionally invalidates readiness after managed payload or restore-runbook changes.
+
+A green timer, successful snapshot creation, monitoring presence, or `container=running` is not recovery evidence. Do not introduce a routine-update or historical-deployment bypass around the readiness gate.
