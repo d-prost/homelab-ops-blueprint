@@ -77,6 +77,13 @@ esac
 log "Checking sudo access"
 sudo -v
 
+if [[ "$docker_distro" == "ubuntu" ]] && ! apt-cache show ansible-core >/dev/null 2>&1; then
+  log "Enabling the Ubuntu universe repository"
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes software-properties-common
+  sudo add-apt-repository --yes universe
+fi
+
 log "Installing base packages"
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes \
@@ -88,11 +95,9 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes \
   make \
   python3 \
   python3-yaml \
-  shellcheck \
   sudo \
   tar \
-  util-linux \
-  yamllint
+  util-linux
 
 add_docker_repository() {
   sudo install -m 0755 -d /etc/apt/keyrings
@@ -152,7 +157,7 @@ elif command -v service >/dev/null 2>&1; then
 fi
 sudo docker info >/dev/null
 
-for command_name in ansible-inventory ansible-playbook docker git make python3 shellcheck yamllint; do
+for command_name in ansible-inventory ansible-playbook docker git make python3; do
   require_command "$command_name"
 done
 docker compose version >/dev/null
@@ -167,6 +172,9 @@ stack_dir="$repo_root/stacks/$stack"
 [[ -f "$stack_dir/compose.yaml" ]] || fail "stack is missing compose.yaml: $stack"
 [[ -f "$stack_dir/defaults.env" ]] || fail "stack is missing defaults.env: $stack"
 
+log "Validating repository"
+make validate
+
 mapfile -t stack_metadata < <(
   python3 - "$stack_dir/stack.yml" <<'PY'
 import sys
@@ -178,7 +186,7 @@ print(contract["stack_target_dir"])
 print(contract["stack_compose_dest"])
 PY
 )
-(( ${#stack_metadata[@]} == 2 )) || fail "could not read stack target metadata"
+((${#stack_metadata[@]} == 2)) || fail "could not read stack target metadata"
 target_dir="${stack_metadata[0]}"
 compose_dest="${stack_metadata[1]}"
 
@@ -190,21 +198,17 @@ while IFS= read -r network_name; do
     printf 'Created Docker network: %s\n' "$network_name"
   fi
 done < <(
-  docker compose \
-    --env-file "$stack_dir/defaults.env" \
-    -f "$stack_dir/compose.yaml" \
-    config --format json \
-    | python3 -c '
-import json, sys
-model = json.load(sys.stdin)
+  python3 - "$stack_dir/compose.yaml" <<'PY'
+import sys
+from pathlib import Path
+import yaml
+
+model = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8")) or {}
 for key, value in (model.get("networks") or {}).items():
     if isinstance(value, dict) and value.get("external") is True:
         print(value.get("name") or key)
-'
+PY
 )
-
-log "Validating repository"
-make validate
 
 log "Deploying $stack to the local Lab"
 export HOMELAB_LAB_HOSTNAME
