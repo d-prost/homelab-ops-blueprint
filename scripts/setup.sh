@@ -197,26 +197,6 @@ PY
 target_dir="${stack_metadata[0]}"
 compose_dest="${stack_metadata[1]}"
 
-log "Preparing external Docker networks for $stack"
-while IFS= read -r network_name; do
-  [[ -n "$network_name" ]] || continue
-  if ! sudo /usr/bin/docker network inspect "$network_name" >/dev/null 2>&1; then
-    sudo /usr/bin/docker network create "$network_name" >/dev/null
-    printf 'Created Docker network: %s\n' "$network_name"
-  fi
-done < <(
-  python3 - "$stack_dir/compose.yaml" <<'PY'
-import sys
-from pathlib import Path
-import yaml
-
-model = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8")) or {}
-for key, value in (model.get("networks") or {}).items():
-    if isinstance(value, dict) and value.get("external") is True:
-        print(value.get("name") or key)
-PY
-)
-
 log "Deploying $stack to the local Lab"
 sudo -v
 sudo -n true >/dev/null 2>&1 \
