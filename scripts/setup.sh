@@ -92,6 +92,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes \
   curl \
   git \
   gnupg \
+  hostname \
   make \
   python3 \
   python3-yaml \
@@ -113,8 +114,8 @@ add_docker_repository() {
 }
 
 install_docker() {
-  if command -v docker >/dev/null 2>&1; then
-    if docker compose version >/dev/null 2>&1; then
+  if [[ -x /usr/bin/docker ]]; then
+    if /usr/bin/docker compose version >/dev/null 2>&1; then
       log "Docker Engine and Compose v2 are already installed"
       return
     fi
@@ -126,15 +127,19 @@ install_docker() {
       sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes docker-compose-plugin
     fi
 
-    if docker compose version >/dev/null 2>&1; then
+    if /usr/bin/docker compose version >/dev/null 2>&1; then
       return
     fi
 
     add_docker_repository
     sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes docker-compose-plugin
-    docker compose version >/dev/null 2>&1 \
+    /usr/bin/docker compose version >/dev/null 2>&1 \
       || fail "Docker is installed but Compose v2 could not be added automatically"
     return
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    fail "Docker exists at $(command -v docker), but this project requires /usr/bin/docker"
   fi
 
   log "Installing Docker Engine and Compose v2"
@@ -155,12 +160,14 @@ if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
 elif command -v service >/dev/null 2>&1; then
   sudo service docker start
 fi
-sudo docker info >/dev/null
+sudo /usr/bin/docker info >/dev/null
 
-for command_name in ansible-inventory ansible-playbook docker git make python3; do
+for command_name in ansible-inventory ansible-playbook git make python3; do
   require_command "$command_name"
 done
-docker compose version >/dev/null
+[[ -x /usr/bin/docker ]] || fail "Docker is not installed at /usr/bin/docker"
+[[ -x /bin/hostname ]] || fail "hostname is not available at /bin/hostname"
+/usr/bin/docker compose version >/dev/null
 
 if ((install_only == 1)); then
   log "Dependencies installed"
@@ -193,8 +200,8 @@ compose_dest="${stack_metadata[1]}"
 log "Preparing external Docker networks for $stack"
 while IFS= read -r network_name; do
   [[ -n "$network_name" ]] || continue
-  if ! sudo docker network inspect "$network_name" >/dev/null 2>&1; then
-    sudo docker network create "$network_name" >/dev/null
+  if ! sudo /usr/bin/docker network inspect "$network_name" >/dev/null 2>&1; then
+    sudo /usr/bin/docker network create "$network_name" >/dev/null
     printf 'Created Docker network: %s\n' "$network_name"
   fi
 done < <(
@@ -212,12 +219,14 @@ PY
 
 log "Deploying $stack to the local Lab"
 sudo -v
+sudo -n true >/dev/null 2>&1 \
+  || fail "sudo credentials cannot be reused non-interactively by the local Ansible deployment"
 export HOMELAB_LAB_HOSTNAME
-HOMELAB_LAB_HOSTNAME="$(hostname)"
+HOMELAB_LAB_HOSTNAME="$(/bin/hostname)"
 bash scripts/deploy-stack.sh "$stack" --inventory lab
 
 log "Deployment completed"
-sudo docker compose \
+sudo /usr/bin/docker compose \
   --env-file "$target_dir/defaults.env" \
   -f "$target_dir/$compose_dest" \
   ps
