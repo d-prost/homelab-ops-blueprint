@@ -6,66 +6,83 @@ A small Git + Ansible workflow for deploying Docker Compose stacks without addin
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/d-prost/homelab-ops-blueprint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/d-prost/homelab-ops-blueprint)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-I built this for homelab-sized environments where `docker compose up -d` is easy, but making changes safely and rolling them back is not. The repository keeps the deployment path deliberately simple: Git holds the stack definition, Ansible applies it, and the target is checked before a deployment is considered successful.
+I built this for homelab-sized environments where `docker compose up -d` is easy, but making changes safely and rolling them back is not. Git holds the stack definition, Ansible applies it, and the target is checked before a deployment is considered successful.
 
 The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` is the reference stack.
 
-## What it does
-
-A Production deployment goes through a few checks before anything is changed:
-
-- the local checkout must be a clean, up-to-date `main`;
-- the selected inventory host must match the target hostname;
-- each stack declares the files it manages and the services it expects;
-- `MANIFEST.tsv` must match the source-to-target file mapping;
-- container images are pinned by digest;
-- functional checks run on the target after Compose starts;
-- the accepted Git commit is recorded only after those checks pass.
-
-If a deployment fails and the previous managed configuration can be reconstructed, the role restores that configuration and runs the previous checks again. This rollback covers managed configuration, not application data or Docker volumes.
-
-Stateful stacks can also require recovery-readiness evidence before a Production change. That is handled separately from configuration rollback; see [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
-
 ## Quick start
 
-### Requirements
-
-- Linux
-- Git
-- Docker Engine with Compose v2
-- Ansible Core
-- Python 3 with PyYAML
-
-For the full validation suite, install ShellCheck, yamllint and Gitleaks as well.
-
-### Validate the repository
+On a fresh Debian or Ubuntu host, the setup script installs the required packages, starts Docker, validates the repository and deploys the reference stack locally:
 
 ```bash
-make validate
+bash scripts/setup.sh
 ```
 
-### Configure a Production host
+The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the local validation tools. It also creates any external Docker networks required by the selected example stack.
+
+To install the dependencies without deploying anything:
+
+```bash
+bash scripts/setup.sh --install-only
+```
+
+To use another stack after adding it to `stacks/`:
+
+```bash
+bash scripts/setup.sh --stack my-stack
+```
+
+Automatic package installation currently supports Debian and Ubuntu. On another Linux distribution, install Docker Engine with Compose v2, Ansible Core, Python 3 with PyYAML, Git, `sudo`, `tar` and `flock`, then use the normal deployment commands below.
+
+## Production setup
+
+For a Production host, install the dependencies first without starting the Lab example:
+
+```bash
+bash scripts/setup.sh --install-only
+```
+
+Create the local Production inventory:
 
 ```bash
 cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-Edit `hosts.yml` and replace the example values with your host settings.
+Edit `hosts.yml` and replace the example values with the real target settings.
 
-### Preview a deployment
+Preview the deployment:
 
 ```bash
 bash scripts/deploy-stack.sh dozzle --check
 ```
 
-### Deploy
+Deploy it:
 
 ```bash
 bash scripts/deploy-stack.sh dozzle
 ```
 
 The Production entry point expects a clean `main` that matches `origin/main`.
+
+## What happens during a deployment
+
+Before Production is changed, the deployment path verifies that:
+
+- the local checkout is a clean, up-to-date `main`;
+- the selected inventory host matches the target hostname;
+- the exact selected stack payload passes the current contract validator;
+- each stack declares the files it manages and the services it expects;
+- `MANIFEST.tsv` matches the source-to-target file mapping;
+- container images are pinned by digest;
+- functional checks pass on the target after Compose starts;
+- the accepted Git commit is recorded only after those checks pass.
+
+Files that were managed by the previous release but are no longer part of the new contract are removed. Compose is also run with orphan cleanup so removed services do not remain running after a successful deployment or rollback.
+
+If a deployment fails and the previous managed configuration can be reconstructed, the role restores that configuration and runs the previous checks again. This rollback covers managed configuration, not application data or Docker volumes.
+
+Stateful stacks can also require recovery-readiness evidence before a Production change. That is handled separately from configuration rollback; see [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
 
 ## Stack layout
 
@@ -109,7 +126,7 @@ To deploy an earlier tagged stack payload:
 bash scripts/rollback-stack.sh dozzle release-YYYYMMDD-HHMMSSZ
 ```
 
-Historical releases provide the stack payload only. Deployment logic, inventory and validation continue to come from the current checkout, so an old tag cannot silently replace newer deployment guards.
+Historical releases provide the stack payload only. The current checkout still supplies inventory, validation and deployment logic. Production release tags are checked against `origin`, and the selected release commit must belong to `origin/main` history.
 
 Automatic rollback is intentionally limited to configuration that was managed by this project and can be reconstructed from the previous accepted state. Database contents, uploads, media, indexes and other persistent application data need their own backup and restore process.
 
@@ -142,7 +159,7 @@ GitHub Actions runs static validation and a disposable rollback test. The rollba
 |---|---|
 | `ansible/` | inventories, playbooks and the managed-stack role |
 | `stacks/` | Docker Compose stack definitions |
-| `scripts/` | deploy, rollback, validation and readiness helpers |
+| `scripts/` | setup, deploy, rollback, validation and readiness helpers |
 | `tests/` | contract, readiness and rollback tests |
 | `recovery/` | stateful adoption and restore-drill templates |
 | `docs/` | architecture, setup, recovery and release notes |
