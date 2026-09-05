@@ -12,7 +12,36 @@
       - stack_managed_files | length > 0
       - stack_expected_services | length > 0
       - stack_functional_checks | length > 0
+      - stack_compose_dest in (stack_managed_files | map(attribute='dest') | list)
+      - "'defaults.env' in (stack_managed_files | map(attribute='dest') | list)"
     fail_msg: Stack contract contains an unsafe target or lacks required checks.
+
+- name: Validate current managed file entries
+  ansible.builtin.assert:
+    that:
+      - item.src is defined
+      - item.dest is defined
+      - item.mode is defined
+      - item.src is string
+      - item.dest is string
+      - item.mode is string
+      - item.src is match('^[A-Za-z0-9._/-]+$')
+      - item.dest is match('^[A-Za-z0-9._/-]+$')
+      - not item.src.startswith('/')
+      - not item.dest.startswith('/')
+      - "'..' not in item.src.split('/')"
+      - "'.' not in item.src.split('/')"
+      - "'..' not in item.dest.split('/')"
+      - "'.' not in item.dest.split('/')"
+      - "'//' not in item.src"
+      - "'//' not in item.dest"
+      - not item.src.endswith('/')
+      - not item.dest.endswith('/')
+      - item.mode is match('^0[0-7]{3}$')
+    fail_msg: Stack contract contains an unsafe managed file entry.
+  loop: "{{ stack_managed_files }}"
+  loop_control:
+    label: "{{ item.dest | default('invalid-entry') }}"
 
 - name: Inspect prior deployment record
   ansible.builtin.stat:
@@ -77,6 +106,26 @@
       target. Refusing an unverified automatic rollback boundary.
   when: stack_deployment_record_stat.stat.exists
 
+- name: Validate prior managed file entries
+  ansible.builtin.assert:
+    that:
+      - item.dest is defined
+      - item.mode is defined
+      - item.dest is string
+      - item.mode is string
+      - item.dest is match('^[A-Za-z0-9._/-]+$')
+      - not item.dest.startswith('/')
+      - "'..' not in item.dest.split('/')"
+      - "'.' not in item.dest.split('/')"
+      - "'//' not in item.dest"
+      - not item.dest.endswith('/')
+      - item.mode is match('^0[0-7]{3}$')
+    fail_msg: Prior release contract contains an unsafe managed file entry.
+  loop: "{{ stack_previous_contract.stack_managed_files }}"
+  loop_control:
+    label: "{{ item.dest | default('invalid-entry') }}"
+  when: stack_deployment_record_stat.stat.exists
+
 - name: Set exact transaction boundaries
   ansible.builtin.set_fact:
     stack_candidate_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}"
@@ -102,6 +151,11 @@
   ansible.builtin.set_fact:
     stack_candidate_only_dests: >-
       {{ stack_current_managed_dests | difference(stack_previous_managed_dests) }}
+
+- name: Determine files no longer managed by the candidate release
+  ansible.builtin.set_fact:
+    stack_retired_dests: >-
+      {{ stack_previous_managed_dests | difference(stack_current_managed_dests) }}
 
 - name: Validate and deploy candidate transaction
   block:
@@ -263,12 +317,19 @@
         backup: false
       loop: "{{ stack_managed_files }}"
 
+    - name: Remove files no longer managed by the candidate
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ stack_retired_dests }}"
+
     - name: Apply Compose model
       ansible.builtin.command:
         argv: >-
           {{ homelab_clean_docker_argv +
              ['compose', '--env-file', stack_target_dir + '/defaults.env',
-              '-f', stack_target_dir + '/' + stack_compose_dest, 'up', '-d'] }}
+              '-f', stack_target_dir + '/' + stack_compose_dest,
+              'up', '-d', '--remove-orphans'] }}
       register: managed_stack_up
       changed_when: true
       when: not ansible_check_mode
@@ -373,7 +434,7 @@
           {{ homelab_clean_docker_argv +
              ['compose', '--env-file', stack_target_dir + '/defaults.env',
               '-f', stack_target_dir + '/' + stack_previous_contract.stack_compose_dest,
-              'up', '-d'] }}
+              'up', '-d', '--remove-orphans'] }}
       changed_when: true
       when: stack_rollback_available | default(false) | bool
 
