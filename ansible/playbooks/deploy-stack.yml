@@ -52,6 +52,13 @@
     - name: Load stack deployment contract
       ansible.builtin.include_vars:
         file: "{{ stack_source_dir }}/stack.yml"
+        name: homelab_stack_contract
 
   roles:
     - role: managed_stack
+      vars:
+        stack_target_dir: "{{ homelab_stack_contract.stack_target_dir }}"
+        stack_compose_dest: "{{ homelab_stack_contract.stack_compose_dest }}"
+        stack_expected_services: "{{ homelab_stack_contract.stack_expected_services }}"
+        stack_managed_files: "{{ homelab_stack_contract.stack_managed_files }}"
+        stack_functional_checks: "{{ homelab_stack_contract.stack_functional_checks }}"
