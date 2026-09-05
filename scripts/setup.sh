@@ -94,13 +94,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes \
   util-linux \
   yamllint
 
-install_docker() {
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    log "Docker Engine and Compose v2 are already installed"
-    return
-  fi
-
-  log "Installing Docker Engine and Compose v2"
+add_docker_repository() {
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL "https://download.docker.com/linux/${docker_distro}/gpg" \
     | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
@@ -110,8 +104,36 @@ install_docker() {
   printf '%s\n' \
     "deb [arch=${architecture} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${docker_distro} ${VERSION_CODENAME} stable" \
     | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-
   sudo apt-get update
+}
+
+install_docker() {
+  if command -v docker >/dev/null 2>&1; then
+    if docker compose version >/dev/null 2>&1; then
+      log "Docker Engine and Compose v2 are already installed"
+      return
+    fi
+
+    log "Docker Engine is installed; adding Compose v2"
+    if apt-cache show docker-compose-v2 >/dev/null 2>&1; then
+      sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes docker-compose-v2
+    elif apt-cache show docker-compose-plugin >/dev/null 2>&1; then
+      sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes docker-compose-plugin
+    fi
+
+    if docker compose version >/dev/null 2>&1; then
+      return
+    fi
+
+    add_docker_repository
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes docker-compose-plugin
+    docker compose version >/dev/null 2>&1 \
+      || fail "Docker is installed but Compose v2 could not be added automatically"
+    return
+  fi
+
+  log "Installing Docker Engine and Compose v2"
+  add_docker_repository
   sudo DEBIAN_FRONTEND=noninteractive apt-get install --yes \
     containerd.io \
     docker-buildx-plugin \
@@ -145,6 +167,21 @@ stack_dir="$repo_root/stacks/$stack"
 [[ -f "$stack_dir/compose.yaml" ]] || fail "stack is missing compose.yaml: $stack"
 [[ -f "$stack_dir/defaults.env" ]] || fail "stack is missing defaults.env: $stack"
 
+mapfile -t stack_metadata < <(
+  python3 - "$stack_dir/stack.yml" <<'PY'
+import sys
+from pathlib import Path
+import yaml
+
+contract = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(contract["stack_target_dir"])
+print(contract["stack_compose_dest"])
+PY
+)
+(( ${#stack_metadata[@]} == 2 )) || fail "could not read stack target metadata"
+target_dir="${stack_metadata[0]}"
+compose_dest="${stack_metadata[1]}"
+
 log "Preparing external Docker networks for $stack"
 while IFS= read -r network_name; do
   [[ -n "$network_name" ]] || continue
@@ -176,6 +213,6 @@ bash scripts/deploy-stack.sh "$stack" --inventory lab
 
 log "Deployment completed"
 sudo docker compose \
-  --env-file "/opt/homelab-ops/stacks/$stack/defaults.env" \
-  -f "/opt/homelab-ops/stacks/$stack/docker-compose.yml" \
+  --env-file "$target_dir/defaults.env" \
+  -f "$target_dir/$compose_dest" \
   ps
