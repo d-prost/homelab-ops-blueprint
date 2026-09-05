@@ -211,6 +211,7 @@ PY
 )
 
 log "Deploying $stack to the local Lab"
+sudo -v
 export HOMELAB_LAB_HOSTNAME
 HOMELAB_LAB_HOSTNAME="$(hostname)"
 bash scripts/deploy-stack.sh "$stack" --inventory lab
