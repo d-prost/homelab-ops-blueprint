@@ -18,7 +18,7 @@ On a fresh Debian or Ubuntu host, the setup script installs the required runtime
 bash scripts/setup.sh
 ```
 
-The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts. It also creates any external Docker networks required by the selected example stack.
+The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
 
 To install the dependencies without deploying anything:
 
