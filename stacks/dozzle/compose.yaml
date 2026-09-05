@@ -14,4 +14,4 @@ services:
       - no-new-privileges:true
 
 networks:
-  homelab_ops_demo:
+  homelab_ops_demo: {}
