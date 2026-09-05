@@ -45,10 +45,6 @@
           Refusing deployment because the actual hostname does not match the
           exact hostname declared by the selected inventory.
 
-    - name: Load stack deployment contract
-      ansible.builtin.include_vars:
-        file: "{{ stack_source_dir }}/stack.yml"
-
   tasks:
     - name: Check Docker server access
       ansible.builtin.command:
