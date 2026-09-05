@@ -15,4 +15,3 @@ services:
 
 networks:
   homelab_ops_demo:
-    external: true
