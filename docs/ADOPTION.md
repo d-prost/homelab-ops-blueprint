@@ -1,29 +1,101 @@
-# Adopting the Blueprint
+# Adapting the repository
 
-## 1. Fork or create a fresh repository
+The example setup uses Dozzle, but the deployment code is meant to work with other Docker Compose stacks as well.
 
-Do not preserve history from a private operational repository.
+## 1. Configure your host
 
-## 2. Keep Production inventory local/private
+Create the local Production inventory from the example:
 
 ```bash
 cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-The real file is ignored by Git.
+Set the Ansible host and the hostname expected on the target.
 
-## 3. Replace the demo stack gradually
+Run a check before the first deployment:
 
-For each stateless stack define the target directory, exact managed files, a matching source-to-target `MANIFEST.tsv`, expected Compose services, functional HTTP checks, and immutable image digests.
+```bash
+bash scripts/deploy-stack.sh dozzle --check
+```
 
-The control plane must keep the current inventory, playbooks, roles, verification code, and recovery-readiness logic authoritative. A historical release may supply only the selected stack payload. Remote targets do not need a Git checkout.
+## 2. Add a stack
 
-Do not adopt databases or core network services until their rollback and restore boundaries are separately defined. Use [the stateful adoption checklist](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
+Start with the structure used by `stacks/dozzle/`:
 
-For a stateful stack, add the public `operations:` declaration and produce the private readiness projection described in [Recovery Readiness](RECOVERY_READINESS.md). The private projection must stay outside the public repository tree and should be generated only from real private backup/restore evidence after the applicable recovery objectives have been evaluated.
+```text
+stacks/my-stack/
+├── compose.yaml
+├── defaults.env
+├── stack.yml
+└── MANIFEST.tsv
+```
 
-Generate the exact public stack-generation hash with:
+In `stack.yml`, define:
+
+- the target directory;
+- the files managed by the deployment;
+- the Compose services expected after startup;
+- functional checks that show the service is actually usable.
+
+`MANIFEST.tsv` must map the managed source files to the same target paths. Container images must use digest-pinned references.
+
+Run the repository validation after adding or changing a stack:
+
+```bash
+make validate
+```
+
+## 3. Test in the lab
+
+Use Check Mode first:
+
+```bash
+bash scripts/deploy-stack.sh my-stack --check
+```
+
+For changes to the deployment or rollback code itself, run the disposable integration test as well:
+
+```bash
+make lab-proof
+```
+
+For a new service, it is worth testing the first real deployment on a disposable or non-critical target before adopting it on the main host. The first deployment has no earlier managed configuration to restore automatically.
+
+## 4. Deploy
+
+Production deployment uses the current clean `main`:
+
+```bash
+bash scripts/deploy-stack.sh my-stack
+```
+
+After the deployment succeeds, create an operational tag if you want a convenient reference for that accepted stack version:
+
+```bash
+bash scripts/tag-release.sh
+```
+
+An older tag can later be selected with:
+
+```bash
+bash scripts/rollback-stack.sh my-stack release-YYYYMMDD-HHMMSSZ
+```
+
+The selected tag supplies the stack payload. The current checkout still supplies the inventory, Ansible role and validation code.
+
+## Stateful stacks
+
+For services with persistent application data, first define the `operations:` section in `stack.yml` and work through [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
+
+The Production readiness check expects:
+
+```bash
+export HOMELAB_RECOVERY_EVIDENCE=/path/to/recovery-readiness.json
+export HOMELAB_BACKUP_MAX_AGE_SECONDS=<seconds>
+```
+
+To calculate the generation hash used by the readiness file:
 
 ```bash
 python3 scripts/check-recovery-readiness.py \
@@ -31,23 +103,4 @@ python3 scripts/check-recovery-readiness.py \
   --print-contract-hash
 ```
 
-A material image, Compose, managed configuration, storage, backup, restore, or runbook change changes that hash and requires new applicable private readiness evidence before the next stateful Production operation.
-
-## 4. First adoption
-
-The first managed deployment has no previous managed-file snapshot. Prove the first adoption in a disposable Lab and keep the previous manual recovery path available.
-
-For a stateful first adoption, complete an isolated functional restore before setting the private disposition to `ready`. A successful snapshot or running container is not sufficient evidence.
-
-## 5. Production
-
-Use `--check`, review the diff, deploy explicitly, verify externally, then create an annotated release tag. The first real remote deployment is a required proof: local-connection CI cannot prove that control-plane-only paths were separated correctly.
-
-For a declared stateful stack, both Production Check Mode and real convergence require:
-
-```bash
-export HOMELAB_RECOVERY_EVIDENCE=/private/path/recovery-readiness.json
-export HOMELAB_BACKUP_MAX_AGE_SECONDS=<environment-policy>
-```
-
-Do not add a wrapper that skips this requirement for routine image updates or historical redeployments. If current `main` declares a stack stateful and an old release predates the recovery contract, the guarded path intentionally fails closed rather than treating the historical payload as stateless.
+See [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md) for the evidence format and the fields used by the check.

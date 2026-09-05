@@ -1,34 +1,32 @@
 ---
 name: Bug report
-description: Report reproducible behavior in the public blueprint.
+description: Report a reproducible problem.
 title: "bug: "
 body:
   - type: markdown
     attributes:
-      value: Remove all private hostnames, IPs, credentials, and private URLs before submitting.
+      value: Please redact credentials and environment-specific details from logs or configuration before posting them.
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What happened, and what did you expect?
+      label: What happened?
+      description: Describe the problem and what you expected instead.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: Reproduction
-      description: Minimal public-safe steps or configuration.
+      label: Steps to reproduce
+      description: Include the smallest set of steps or configuration needed to reproduce it.
     validations:
       required: true
   - type: textarea
-    id: validation
+    id: environment
     attributes:
-      label: Validation output
-      description: Relevant sanitized output from `make validate` or the failing test.
-  - type: checkboxes
-    id: safety
+      label: Environment
+      description: Relevant Docker, Compose, Ansible and OS versions.
+  - type: textarea
+    id: output
     attributes:
-      label: Public-safety confirmation
-      options:
-        - label: I removed credentials and private infrastructure identifiers.
-          required: true
+      label: Relevant output
+      description: Add validation output, logs or error messages if they help explain the problem.

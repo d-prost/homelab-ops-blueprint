@@ -1,224 +1,175 @@
 # Architecture
 
-## Architectural thesis
+This repository uses Git as the source for stack definitions and Ansible as the deployment mechanism. The important rule is simple: starting containers is not enough to call a deployment successful. The target has to match the selected host, the stack contract has to be valid, and the service checks have to pass.
 
-HomeLab Ops Blueprint implements **Verified Convergence** for small Docker Compose environments.
+## Main pieces
 
-The goal is not merely to make a target look like Git. The goal is to accept a new Production state only when the system can establish a bounded chain of evidence from reviewed desired state to verified runtime, while preserving a deterministic and verifiable path back to the exact previously accepted contract.
+### Git checkout
 
-Verified Convergence is built from seven core properties:
+The current checkout provides the deployment code, inventory, validation scripts and stack definitions. Production runs require a clean `main` that matches `origin/main`.
 
-1. **Authorized desired state** — the candidate originates from reviewed Git under explicit branch and remote-equality guards.
-2. **Exact target identity** — the selected inventory and the actual target hostname must agree exactly.
-3. **Contract-bounded mutation** — only files declared by the stack contract and matching manifest may be installed.
-4. **Immutable runtime inputs** — managed container images must be pinned by digest.
-5. **Functional runtime proof** — success requires expected services and functional checks, not just container creation.
-6. **Recorded acceptance evidence** — the accepted Git commit and target are persisted as a deployment receipt.
-7. **Verified rollback** — a failed candidate may roll back only when the exact prior Git contract and complete prior managed file set are available, and the restored runtime passes the prior functional contract again.
+Operational release tags are used when an older stack payload needs to be deployed. Only the selected `stacks/<name>/` payload comes from the tag; the current checkout still provides Ansible, inventory and validation logic.
 
-Declared stateful stacks add a separate **recovery-readiness gate** before Production mutation. This gate does not make persistent data transactional; it prevents configuration convergence from being treated as sufficient recovery proof.
+### Inventory
 
-These properties are intentionally stronger than a generic `docker compose up` workflow and intentionally smaller in scope than cluster orchestration.
+The Production inventory selects the target and declares the hostname expected on that machine. Preflight compares the declared name with the hostname returned by the target before deployment starts.
 
-## Trust boundaries
+### Stack contract
 
-- **Reviewed Git desired state:** source of the candidate stack contract and payload.
-- **Current control plane:** current `main` inventory, identity guards, playbooks, roles, validation logic, verifier, and recovery-readiness logic.
-- **Release payload:** only the selected `stacks/<name>/` directory from `HEAD` or an annotated operational release.
-- **Target runtime:** Docker, Compose, Python, managed files, persistent application data, secrets, and deployment receipts.
-- **Git history:** authoritative source for the exact previously accepted stack contract during rollback.
-- **Private recovery evidence:** environment-owned readiness projection and underlying backup/restore evidence; never part of public Git.
-- **Private operations boundary:** real topology, credentials, backup evidence, private PKI, and recovery material remain outside the public repository.
-
-Historical releases never supply executable automation. Old payloads may describe an old stack, but they cannot replace current safety logic, current inventory, current verification code, or current stateful-classification guards.
-
-## Authority model
-
-CI validates repository consistency; it does not have Production deployment authority. Human review decides what enters `main`, and an operator performs a separate explicit Production convergence action.
+Each stack contains:
 
 ```text
-operator -> Git / pull request -> CI validation -> human review / merge -> clean main
-operator -----------------------------------------------------> explicit converge
-clean main ---------------------------------------------------> guarded converge
-                                                               |
-                                                               v
-target runtime -> functional verification -> acceptance evidence
+stacks/<name>/
+├── compose.yaml
+├── defaults.env
+├── stack.yml
+└── MANIFEST.tsv
 ```
 
-This separation is deliberate. A green CI run is evidence that the repository satisfies its static and disposable proof suite; it is not permission for CI to mutate Production.
+`stack.yml` describes the target directory, files managed by the deployment, expected Compose services and functional checks. `MANIFEST.tsv` provides the source-to-target mapping for the managed files.
 
-## Convergence lifecycle
+The role validates both before copying anything. Images referenced by managed Compose files must be pinned with `@sha256:` digests.
+
+### Target
+
+The target needs Docker, Docker Compose and Python. It does not need a checkout of this repository. Ansible transfers the files and verifier needed for the deployment.
+
+## Deployment flow
+
+The normal Production path is `scripts/deploy-stack.sh`.
 
 ```text
-reviewed Git desired state
-      |
-      +--> clean tree / main / origin equality guard
-      +--> selected stack payload
-      +--> current private inventory
-      +--> acquire the single non-blocking deployment lock
-      |
-      v
-control-plane preflight
-      |
-      +--> require explicit release metadata
-      +--> verify exact target identity
-      +--> render candidate Compose model
-      +--> require immutable image digests
-      +--> validate stack.yml against MANIFEST.tsv
-      +--> for stateful Production: require current private recovery readiness
-      |
-      v
-bounded candidate transaction
-      |
-      +--> stage only declared managed files
-      +--> capture exact prior managed files when rollback is provable
-      +--> install only allowlisted destinations
-      +--> docker compose up -d
-      |
-      v
-runtime proof
-      |
-      +--> expected-service set
-      +--> transferred functional verifier
-      +--> staged contract on the real target
-      |
-      +--> success: write deployment receipt
-      |
-      +--> failure: enter verified rollback path
+operator
+  |
+  v
+check local Git state
+  |
+  v
+load inventory + selected stack
+  |
+  v
+validate target hostname, contract and image digests
+  |
+  +--> stateful stack: run recovery-readiness check
+  |
+  v
+stage managed files
+  |
+  v
+capture previous managed configuration when rollback is possible
+  |
+  v
+install candidate files
+  |
+  v
+docker compose up -d
+  |
+  v
+verify expected services + functional checks on the target
+  |
+  +--> success: write deployment record
+  |
+  +--> failure: restore previous managed configuration and verify it again
 ```
 
-## Production mutation invariants
+The deployment entry point also uses a non-blocking `flock` lock so two Production changes cannot run at the same time.
 
-Production-changing operations should remain deliberately boring:
+## Why the current checkout stays in control
 
-- **One guarded mutation path.** Normal deployment and explicit rollback reuse `scripts/deploy-stack.sh`; wrappers may select a payload, but they must not create a weaker maintenance or rollback path around the Production guards.
-- **Serialized convergence.** The operator entry point uses one non-blocking `flock` lock and refuses a second concurrent deployment. Parallel mutation of the same environment is treated as an error, not as throughput to optimize.
-- **No routine-change bypass.** Image-only updates, routine maintenance, redeployments, Production Check Mode, and rollbacks are still Production operations and preserve the same authorization, target, verification, and recovery boundaries.
-- **Current safety logic wins.** Historical payloads may supply stack files only. They never supply historical inventories, roles, helper scripts, safety logic, or readiness logic.
-- **Current stateful classification cannot disappear through history.** If current `main` declares a stack stateful but a selected historical payload predates the recovery contract, the readiness gate fails closed rather than silently treating the payload as stateless.
-- **Acceptance follows runtime proof.** A deployment record is written only after target-side verification succeeds; check mode and CI validation do not create Production acceptance evidence.
+A rollback or historical deployment may need an older Compose file, but it should not bring back old automation around it. For that reason, release tags are treated as payload sources rather than complete copies of the control plane.
 
-These rules keep convenience features from becoming parallel control planes.
+This means an older tag cannot replace:
 
-## Verified rollback lifecycle
+- the current inventory;
+- hostname checks;
+- Ansible roles and playbooks;
+- validation scripts;
+- functional verification code;
+- stateful readiness checks.
 
-Rollback is not defined as "run an older Compose file." It is a second convergence operation whose target is the previously accepted contract.
+The same rule also prevents an old payload from bypassing a stateful classification that exists on current `main`.
 
-```text
-candidate failure
-      |
-      v
-prior deployment receipt
-      |
-      +--> require exactly one prior Git commit
-      |
-      v
-exact prior contract from Git history
-      |
-      +--> validate rollback boundary compatibility
-      +--> require complete prior managed-file set
-      |
-      v
-restore transaction
-      |
-      +--> restore prior allowlisted files
-      +--> remove candidate-only files
-      +--> reapply prior Compose model
-      |
-      v
-prior runtime proof
-      |
-      +--> expected prior services
-      +--> exact prior functional contract
-      |
-      +--> verified: report candidate failure with successful rollback
-      +--> unverifiable: fail closed
-```
+## Managed-file boundary
 
-A rollback is therefore successful only when the previous configuration state is both restored and functionally re-proven. This says nothing about automatic restoration of persistent application data.
+The role only writes destinations declared by the selected stack. This makes it possible to know which files belong to a deployment and which files must be restored after a failed candidate.
 
-For a declared stateful candidate, the readiness projection must separately assert that configuration rollback to the previously accepted deployment generation is compatible with the candidate's data/schema behavior. Schema-sensitive or migration-heavy changes that cannot make that assertion are outside the guarded stateful path.
+Before changing an already managed stack, the role captures the previous managed files when it can prove the previous boundary from the deployment record and Git history. Candidate-only files are removed during rollback.
 
-## Evidence model
+If the previous managed set cannot be reconstructed completely, the role does not claim an automatic verified rollback.
 
-Today the implementation records a compact deployment receipt containing the stack, accepted Git commit, target directory, and verification class. The long-term evidence model is intentionally machine-readable and should allow an independent verifier to answer:
+## Deployment records
 
-- Which Git commit authorized this state?
-- Which stack contract defined the mutation boundary?
-- Which target accepted it?
-- Which image digests were permitted?
-- Which declared files were installed?
-- Which functional checks passed?
-- Which previous accepted state is available for rollback?
-- Was rollback itself re-verified when used?
+A successful Production run writes a compact record of the accepted state. It currently includes the stack, Git commit, target directory and verification class.
 
-Stateful readiness uses a separate private evidence projection because real backup receipts, RPO/RTO values, and restore drill records belong to the private operations boundary. The public project validates only the minimum readiness facts needed to authorize the mutation.
+That record is used to locate the previous stack contract during an automatic rollback. Git history remains the source for the exact previous contract and payload.
 
-Future evidence work must extend the existing safety model rather than create a parallel deployment path.
+The record is written after target-side checks pass, not merely after Compose starts.
 
-## Remote-target model
+## Rollback
 
-Compose rendering remains on the control plane. Runtime checks and functional verification execute on the target, with the verifier and contract transferred by Ansible. The target therefore needs Docker, Compose and Python, but no repository checkout.
+There are two rollback cases.
 
-This split is deliberate: a local Ansible connection can conceal path and trust-boundary mistakes. At least one bounded real remote deployment is required before claiming the remote-target property is proven end to end.
+### Failed candidate
 
-## Stateful boundary
+When a new candidate fails its checks, the role tries to restore the previously accepted managed configuration:
 
-Verified Convergence protects declared configuration convergence. It does **not** claim transactional rollback of databases, media, indexes, uploads, named volumes, application-generated state, or secrets.
+1. read the previous deployment record;
+2. load the previous stack contract from Git history;
+3. restore the previous managed files;
+4. remove files that only existed in the failed candidate;
+5. run Compose for the restored configuration;
+6. run the previous functional checks again.
 
-The optional `operations:` contract validates **operational coverage declarations** such as persistent mounts, backup policy identity, restore runbook, restore-verification intent, and monitoring intent. Those declarations are not evidence that the service is currently recoverable.
+The original deployment still exits as failed. The rollback result only tells the operator whether the previous configuration was restored successfully.
 
-The implemented consumer-side Production readiness gate keeps these questions separate:
+### Explicit historical deployment
 
-1. Is the state boundary declared?
-2. Has an isolated functional restore actually passed without changing Production?
-3. Did that evidence cover the exact stateful service set?
-4. Were the environment's applicable RPO and RTO objectives met?
-5. Is the applicable backup evidence current enough for the environment's real backup cadence?
-6. Is configuration rollback to the previously accepted deployment generation safe for this candidate?
-7. Is the stack explicitly recovery-ready for this exact public stack identity and generation?
+`scripts/rollback-stack.sh` selects a tagged stack payload and sends it through the same guarded deployment path. It is not a second, weaker maintenance path.
 
-Snapshot existence, a green timer, or a declared restore runbook answers none of those questions by itself. Backup freshness is derived from the real backup cadence plus a bounded operational margin; the public blueprint does not encode one universal age such as 12 or 30 hours. For multiple required backup inputs, the projected observation time represents the oldest applicable required evidence.
+## Configuration versus application data
 
-### Recovery-proof applicability
+The rollback mechanism manages configuration files. It does not restore database contents, volumes, uploads, media, indexes or application-generated state.
 
-Restore compatibility can change even when persistent mounts do not. The readiness gate therefore binds private evidence to a deterministic hash over the public stack identity, recovery-relevant stateful declarations, and the public runtime generation: expected services, functional checks, managed-file contract, hashes of all managed public payload files, and hashes of referenced restore runbooks.
+For a stateless service that distinction is usually straightforward. For a stateful service, a configuration rollback can also be unsafe after a schema or data-format change. The stateful readiness check therefore includes an explicit compatibility decision for rollback to the previously accepted deployment generation.
 
-This deliberately invalidates old readiness evidence after image, Compose, managed public configuration, storage, backup, restore, or runbook changes. Monitoring-only intent is outside that hash.
+## Stateful readiness
 
-The hash identifies applicability; it is not a cryptographic signature or proof of who produced the evidence.
+Stateful stacks can declare an `operations:` section in `stack.yml`. Production then requires a recovery-readiness projection supplied through `HOMELAB_RECOVERY_EVIDENCE` plus the environment's backup-age policy.
 
-### Private evidence trust boundary
+The readiness file is checked against a deterministic hash of recovery-relevant parts of the current stack. In practical terms, changes to the image, Compose model, managed configuration, storage declarations or referenced restore runbook require matching readiness evidence for the new generation.
 
-The public consumer accepts a strict JSON projection containing the exact covered service set, explicit `ready` disposition, isolated-restore pass, functional-verification pass, Production-unchanged assertion, RPO/RTO-met assertions, configuration-rollback compatibility, and backup-observation timestamp. Unknown fields are rejected so the public implementation cannot silently grow dependencies on private metadata.
+The current check covers:
 
-The evidence file must live outside the public repository tree, must be a regular non-symlink file, and must not be group- or world-writable. Repository URLs, snapshot IDs, run IDs, credentials, exact recovery objective values, restored object identifiers, screenshots, and detailed restore records remain private.
+- the expected stateful service set;
+- an isolated restore result;
+- functional verification of that restore;
+- confirmation that Production was not modified by the restore test;
+- whether the applicable RPO/RTO objectives were met;
+- configuration-rollback compatibility;
+- backup freshness;
+- an explicit `ready` result.
 
-Routine image updates and other apparently small stateful mutations do not bypass the gate. Private backup receipts and restore evidence remain private; the public project defines the contract and validation boundary, not the backup writer.
+The details and JSON format are in [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md).
 
-The gate is a Phase 3 foundation rather than completion of the entire stateful model. Richer public declarations for secret and export boundaries and a fully synthetic stateful reference example remain roadmap work.
+## Check mode
 
-## Ongoing monitoring boundary
+Production Check Mode uses the same preflight and stack selection as a real deployment. It is intended to show what the guarded path would do, not to provide a bypass around target or stateful checks.
 
-Target-side functional checks are **deployment acceptance checks**, not a replacement for ongoing monitoring. A private environment may use Checkmk, Prometheus, another monitoring system, or simple local checks as its runtime-health authority. The blueprint should consume only the minimum monitoring intent needed by a stack contract and should not create a second alerting or operational-truth path.
+No accepted deployment record is written in check mode.
 
-## Design constraints
+## CI
 
-The project favors explicit proof over automatic reconciliation and bounded mechanisms over broad platforms.
+CI validates the repository but does not deploy Production.
 
-Deliberate exclusions include:
+The main workflow has two useful classes of checks:
 
-- no general cluster orchestration;
-- no Kubernetes requirement;
-- no always-on GitOps controller requirement;
-- no automatic Production deployment from public CI;
-- no parallel Production mutation path for routine maintenance;
-- no stateful database migration automation;
-- no backup writer in the public blueprint;
-- no monitoring platform in the public blueprint;
-- no secret-store implementation in the public blueprint;
-- no firewall management framework;
-- no private infrastructure inventory;
-- no feature expansion that weakens target identity, immutable images, bounded mutation, verification, rollback proof, or stateful readiness.
+1. static checks for Bash, Python, YAML, Ansible syntax, stack contracts, readiness logic and repository rules;
+2. a disposable integration test that deploys Dozzle, injects a failure, rolls back and verifies the restored service.
 
-Environment-specific private operations may implement secrets, backups, monitoring, scheduling, recovery objectives, and offsite recovery around this core model.
+This keeps Production changes operator-driven while still exercising the deployment and rollback code on every relevant change.
+
+## Remote targets
+
+Compose rendering happens on the control machine. Runtime verification happens on the target. Ansible transfers the verifier and contract data needed for the check.
+
+This arrangement avoids depending on repository paths on the target and keeps historical stack selection on the control side. More real remote-host integration coverage is still planned; see [`../ROADMAP.md`](../ROADMAP.md).
