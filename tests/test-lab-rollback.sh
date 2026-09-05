@@ -3,11 +3,10 @@ set -Eeuo pipefail
 [[ "${HOMELAB_LAB_ROLLBACK_TEST:-0}" == "1" ]] || { printf 'ERROR: set HOMELAB_LAB_ROLLBACK_TEST=1.\n' >&2; exit 1; }
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"; cd "$repo_root"
 actual_hostname="$(hostname)"; export HOMELAB_LAB_HOSTNAME="$actual_hostname"
-target_dir="/opt/homelab-ops/stacks/dozzle"; record_file="/etc/homelab-ops/deployments/dozzle.record"; network_name="homelab_ops_demo"; tmp_root="$(mktemp -d)"; runtime_dir="$tmp_root/runtime"; failure_log="$tmp_root/failed-deploy.log"; network_created=0
+target_dir="/opt/homelab-ops/stacks/dozzle"; record_file="/etc/homelab-ops/deployments/dozzle.record"; tmp_root="$(mktemp -d)"; runtime_dir="$tmp_root/runtime"; failure_log="$tmp_root/failed-deploy.log"
 [[ ! -e "$target_dir" ]] || { printf 'ERROR: disposable Lab target already exists: %s\n' "$target_dir" >&2; exit 1; }
-cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/defaults.env" ]]; then sudo /usr/bin/docker compose --env-file "$target_dir/defaults.env" -f "$target_dir/docker-compose.yml" down --remove-orphans >/dev/null 2>&1; fi; sudo rm -rf -- "$target_dir"; sudo rm -f -- "$record_file"; if ((network_created)); then sudo /usr/bin/docker network rm "$network_name" >/dev/null 2>&1; fi; rm -rf -- "$tmp_root"; }; trap cleanup EXIT
+cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/defaults.env" ]]; then sudo /usr/bin/docker compose --env-file "$target_dir/defaults.env" -f "$target_dir/docker-compose.yml" down --remove-orphans >/dev/null 2>&1; fi; sudo rm -rf -- "$target_dir"; sudo rm -f -- "$record_file"; rm -rf -- "$tmp_root"; }; trap cleanup EXIT
 mkdir -p "$runtime_dir"; chmod 0700 "$runtime_dir"
-if ! sudo /usr/bin/docker network inspect "$network_name" >/dev/null 2>&1; then sudo /usr/bin/docker network create "$network_name" >/dev/null; network_created=1; fi
 export XDG_RUNTIME_DIR="$runtime_dir"; export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
 bash scripts/deploy-stack.sh dozzle --inventory lab
 before_compose="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"; before_defaults="$(sudo sha256sum "$target_dir/defaults.env" | awk '{print $1}')"
