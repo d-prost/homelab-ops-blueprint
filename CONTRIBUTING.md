@@ -1,68 +1,42 @@
 # Contributing
 
-Thank you for helping improve HomeLab Ops Blueprint.
-
-The project values small, reviewable changes that strengthen **Verified Convergence** without turning a small-environment blueprint into a general orchestration platform.
-
-A useful contribution should improve at least one of these properties:
-
-- authorized desired state;
-- exact target identity;
-- contract-bounded mutation;
-- immutable runtime inputs;
-- functional runtime proof;
-- machine-readable acceptance evidence;
-- verified rollback;
-- recovery readiness for stateful services.
+Contributions are welcome. Small, focused pull requests are much easier to review than changes that mix deployment logic, documentation and unrelated cleanup.
 
 ## Before opening a pull request
 
-1. Fork the repository and create a focused branch.
-2. Keep all examples environment-neutral.
-3. Never include real infrastructure identifiers, credentials, backup evidence, private keys, or secret environment files.
-4. Run:
+Run the normal validation suite:
 
-   ```bash
-   make validate
-   ```
+```bash
+make validate
+```
 
-5. If you changed deployment, verification, evidence, or rollback behavior, also run the disposable Lab proof on a clean Linux host:
+If you changed deployment, verification or rollback behavior, also run:
 
-   ```bash
-   make lab-proof
-   ```
+```bash
+make lab-proof
+```
 
-6. Add or update a focused test for safety-sensitive behavior.
-7. Update documentation when an operator-visible contract or proof property changes.
+Add or update tests when you change behavior. Documentation changes should describe what an operator actually needs to know rather than restating implementation details.
 
-## Pull request expectations
+## Pull requests
 
-A good pull request:
+A useful pull request description answers three questions:
 
-- explains the operational problem;
-- states which Verified Convergence property it strengthens;
-- keeps the scope small;
-- describes the safety boundary;
-- includes validation evidence;
-- avoids unrelated formatting churn;
-- does not make Production deployment automatic by default;
-- does not weaken immutable-image, host-identity, mutation-boundary, functional-verification, or rollback requirements.
+1. What problem does this solve?
+2. What changed?
+3. How was it tested?
 
-A change that adds a large dependency, controller, daemon, or abstraction should explain why the same proof property cannot be preserved with a smaller mechanism.
+Please avoid unrelated formatting changes in the same PR. If a new dependency or background service is needed, explain why the existing scripts and Ansible path are not enough.
 
-## Good first contributions
+## Stack changes
 
-Useful first contributions include:
+When adding or changing a stack, make sure:
 
-- clearer documentation or examples;
-- additional contract-validation tests;
-- failure-path tests;
-- portable error handling;
-- functional verification improvements;
-- richer machine-readable evidence;
-- an additional stateless example stack with pinned image digests;
-- public-safety checks with low false-positive rates.
+- `stack.yml` and `MANIFEST.tsv` describe the same managed files;
+- image references are pinned by digest;
+- expected services and functional checks match the Compose model;
+- `make validate` passes.
 
-## Review policy
+## Bug reports
 
-Maintainers may request changes when a contribution is convenient but weakens the Verified Convergence chain or the public/private boundary. Safety and independent verifiability take precedence over reducing a few lines of configuration or adding feature breadth.
+Include the smallest reproducible example you can, along with the relevant validation or command output. Redact credentials and environment-specific details from logs or configuration before posting them publicly.

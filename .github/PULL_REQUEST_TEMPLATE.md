@@ -1,20 +1,13 @@
-## Problem
+## Summary
 
-What operational problem does this change solve?
+What changed and why?
 
-## Change
-
-Describe the smallest relevant change.
-
-## Safety boundary
-
-- [ ] No real infrastructure identifiers or secrets are included.
-- [ ] Production remains manual.
-- [ ] Host-identity and immutable-image guards are preserved.
-- [ ] Rollback/data-recovery boundaries remain explicit.
-
-## Validation
+## Testing
 
 - [ ] `make validate`
-- [ ] `make lab-proof` when deployment/rollback behavior changed
-- [ ] Documentation updated when operator behavior changed
+- [ ] `make lab-proof` if deployment or rollback behavior changed
+- [ ] I added or updated tests where needed
+
+## Notes
+
+Anything reviewers should know, including follow-up work or behavior that is intentionally unchanged.

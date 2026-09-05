@@ -1,43 +1,28 @@
-# Recovery Readiness Gate
+# Recovery readiness
 
-Stateful deployment safety requires a separate recovery decision. A valid Compose model, a successful configuration rollback path, or the existence of a backup does not prove that application data is currently recoverable.
+Configuration rollback is only part of the story for a stateful service. Before changing a Production stack with persistent data, the deployment script can require evidence that the current service can actually be restored and that rolling the configuration back would still be safe.
 
-The public blueprint therefore defines a **consumer-side readiness gate**. It does not write backups, store credentials, know private repository locations, or publish real restore evidence.
+The check is implemented by `scripts/check-recovery-readiness.py`.
 
-## Decision model
+## What the check expects
 
-For a stateful stack, Production readiness is accepted only when all of these are true:
+For a stateful stack, the readiness file must show that:
 
-1. the public `operations:` contract declares the state boundary;
-2. private evidence is bound to the exact public stack name and generation for which recovery was proven;
-3. the evidence explicitly covers the complete stateful service set;
-4. an isolated restore passed without changing Production;
-5. the restored service passed functional verification, not only a container or file-existence check;
-6. the environment confirms its applicable RPO and RTO objectives were met;
-7. configuration rollback to the previously accepted deployment state is safe for this candidate;
-8. the private evidence has an explicit `ready` disposition;
-9. backup evidence is fresh enough for an environment-supplied policy.
+- it applies to the current stack generation;
+- it covers the complete set of stateful services;
+- an isolated restore completed successfully;
+- the restored service passed functional checks;
+- the restore test did not modify Production;
+- the environment's RPO and RTO objectives were met;
+- configuration rollback to the previous deployment is compatible with the candidate;
+- the result is explicitly marked `ready`;
+- the backup observation is recent enough for the supplied maximum age.
 
-The freshness policy is intentionally not embedded in this repository. A real environment derives it from its backup cadence plus a bounded operational margin and passes the resulting maximum age to the gate. When a stack depends on more than one required backup input, `backup_receipt.observed_at` must represent the **oldest required applicable backup evidence**, so one fresh component cannot hide a stale dependency.
+The maximum backup age is supplied at deployment time because backup schedules differ between environments.
 
-RPO/RTO target values remain private environment decisions. The public projection carries only `rpo_met` and `rto_met` booleans.
+## Stack generation hash
 
-## Exact public-generation binding
-
-A restore proof can become obsolete even when mount and backup declarations did not change. An image upgrade, database-engine change, Compose change, public application configuration change, or restore-runbook change can alter recovery compatibility.
-
-The gate therefore hashes a versioned recovery-proof contract containing:
-
-- the public stack name, preventing cross-stack evidence replay;
-- stateful `persistent_mounts`, `backup`, and `restore` declarations;
-- expected services and functional deployment checks;
-- the declared managed-file contract;
-- SHA-256 digests of every managed public payload file, including Compose and public defaults;
-- SHA-256 digests of referenced restore runbooks.
-
-A change to those inputs invalidates older evidence automatically. Monitoring-only intent does not invalidate an otherwise applicable restore proof.
-
-Generate the current hash with:
+Recovery evidence is tied to the version of the stack it was tested against. Calculate the current hash with:
 
 ```bash
 python3 scripts/check-recovery-readiness.py \
@@ -45,16 +30,25 @@ python3 scripts/check-recovery-readiness.py \
   --print-contract-hash
 ```
 
-The hash is an applicability identifier, not a signature. Authenticity of the private evidence source remains an operator trust decision.
+The hash includes recovery-relevant parts of the stack, including:
 
-## Private evidence schema
+- the stack name;
+- stateful storage, backup and restore declarations;
+- expected services and functional checks;
+- the managed-file contract;
+- hashes of managed payload files;
+- hashes of referenced restore runbooks.
 
-Store the compact readiness projection outside the public repository tree. The accepted schema is intentionally strict:
+Changes to those inputs produce a different hash, so older readiness evidence no longer matches automatically.
+
+## Readiness file
+
+The current schema is:
 
 ```json
 {
   "schema_version": 1,
-  "contract_hash": "<sha256 from the exact public stack generation>",
+  "contract_hash": "<sha256 from the current stack generation>",
   "covered_services": ["example-db"],
   "disposition": "ready",
   "isolated_restore": {
@@ -75,45 +69,41 @@ Store the compact readiness projection outside the public repository tree. The a
 }
 ```
 
-Unknown fields are rejected. Real RPO/RTO values, repository URLs, Snapshot IDs, Run IDs, credentials, hostnames, restored object identifiers, screenshots, and detailed drill evidence remain private and are not part of the public consumer contract.
+The schema is strict and unknown fields are rejected. The file contains only the values needed by the deployment check; the underlying backup and restore records can stay with the system that produced them.
 
-`configuration_rollback_safe` is deliberately separate from restore success. It asserts that returning to the previously accepted image/configuration generation after candidate verification failure will not create an unsafe data/schema mismatch. Schema-sensitive, migration-heavy, database-major, or otherwise rollback-incompatible changes must not be represented as ready for this guarded path.
+`configuration_rollback_safe` is separate from restore success. A restore can work while returning to the previous application version would still be unsafe because of a schema or data-format change.
 
-The evidence file must be a regular non-symlink file, must not be group- or world-writable, and must live outside the public repository tree. These checks prevent an ignored file inside the public clone or an easily replaceable local file from silently becoming Production authorization input.
+The readiness file must be a regular file outside the repository checkout and must not be group- or world-writable.
 
-## Production integration
+## Production use
 
-For a stateful Production deployment, set:
+Set the readiness file and the maximum accepted backup age before running the normal deployment command:
 
 ```bash
-export HOMELAB_RECOVERY_EVIDENCE=/private/path/recovery-readiness.json
-export HOMELAB_BACKUP_MAX_AGE_SECONDS=<environment-policy>
+export HOMELAB_RECOVERY_EVIDENCE=/path/to/recovery-readiness.json
+export HOMELAB_BACKUP_MAX_AGE_SECONDS=<seconds>
+
+bash scripts/deploy-stack.sh <stack> --check
+bash scripts/deploy-stack.sh <stack>
 ```
 
-Then use the normal guarded deployment entry point. There is no stateful routine-update bypass: image updates, redeployments, Check Mode previews through the Production path, and explicit historical deployments use the same readiness decision.
+The same check is used for normal deployments, Production Check Mode and historical stack deployments when the selected or current stack is stateful.
 
-The current `main` stack contract is also supplied to the gate. If current `main` declares the stack stateful but a selected historical payload predates the stateful recovery contract, the operation fails closed instead of silently classifying that historical payload as stateless.
+If current `main` marks a stack as stateful, selecting an older release that predates the stateful declaration does not make the readiness requirement disappear.
 
-Stateless stacks whose current and selected contracts are both stateless do not require recovery evidence.
+Stateless stacks do not need a readiness file.
 
-## Failure semantics
+## Common failures
 
-The gate fails closed when:
+The command exits without authorizing the deployment when, for example:
 
-- the evidence schema is unsupported, incomplete, or contains unknown fields;
-- the evidence file violates its local trust boundary;
-- the contract hash differs from the selected public stack generation or stack identity;
-- the evidence does not cover the exact stateful service set;
-- the disposition is not `ready`;
-- the isolated restore, functional verification, or Production-isolation assertion is false;
-- RPO or RTO objectives are not confirmed as met;
-- configuration rollback is not confirmed safe for the candidate;
-- the backup receipt timestamp is invalid, in the future, or older than the supplied freshness policy;
-- a stateful Production operation omits private evidence or freshness policy;
-- a historical payload would erase a stateful classification known to the current control plane.
+- the JSON is incomplete or uses an unsupported schema version;
+- the contract hash does not match the current stack generation;
+- one of the stateful services is missing from `covered_services`;
+- the restore or functional check is marked failed;
+- `production_unchanged`, `rpo_met`, `rto_met` or `configuration_rollback_safe` is false;
+- `disposition` is not `ready`;
+- `backup_receipt.observed_at` is invalid, in the future or too old;
+- the readiness file is missing or has unsafe local permissions.
 
-Configuration rollback and application-data recovery remain separate mechanisms. Passing this gate does not authorize automatic rollback of persistent data.
-
-## Phase 3 boundary
-
-This gate is a Phase 3 foundation, not a claim that the entire stateful model is complete. The remaining roadmap work includes richer public declarations for secret and export boundaries, a fully synthetic stateful reference example, and stronger machine-readable evidence where it adds independent verification without importing private operational truth.
+Passing this check does not restore application data automatically. It only allows the configuration deployment to continue after the recovery prerequisites have been checked.

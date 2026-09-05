@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -16,10 +17,25 @@ SAFE_FILE = re.compile(r"^[A-Za-z0-9._/-]+$")
 SAFE_MODE = re.compile(r"^0[0-7]{3}$")
 IMAGE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
 TARGET = re.compile(r"^/(opt|srv)/homelab-ops/[A-Za-z0-9._/-]+$")
+CONTRACT_FIELDS = {
+    "stack_target_dir",
+    "stack_compose_dest",
+    "stack_expected_services",
+    "stack_managed_files",
+    "stack_functional_checks",
+    "operations",
+}
 
 
 class ContractError(RuntimeError):
     pass
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def load(path: Path) -> object:
@@ -42,7 +58,13 @@ def safe_relative_file(value: object, label: str) -> str:
     if not isinstance(value, str) or not SAFE_FILE.fullmatch(value):
         raise ContractError(f"{label} is not a safe relative file")
     path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or "." in path.parts or value.endswith("/"):
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or "." in path.parts
+        or "//" in value
+        or value.endswith("/")
+    ):
         raise ContractError(f"{label} is not a safe relative file")
     return value
 
@@ -58,21 +80,21 @@ def safe_target(value: object, label: str) -> str:
 
 def load_manifest(path: Path) -> list[tuple[str, str]]:
     if not path.is_file():
-        raise ContractError(f"missing manifest: {path.relative_to(ROOT)}")
+        raise ContractError(f"missing manifest: {display_path(path)}")
     records: list[tuple[str, str]] = []
     for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not raw or raw.startswith("#"):
             continue
         fields = raw.split("\t")
         if len(fields) != 2:
-            raise ContractError(f"{path.relative_to(ROOT)}:{line_number}: expected two TSV fields")
+            raise ContractError(f"{display_path(path)}:{line_number}: expected two TSV fields")
         source = safe_relative_file(fields[0], f"manifest source line {line_number}")
         destination = fields[1]
         if not destination.startswith("/"):
             raise ContractError(f"manifest destination line {line_number} must be absolute")
         records.append((source, destination))
     if not records or len(records) != len(set(records)):
-        raise ContractError(f"{path.relative_to(ROOT)} is empty or contains duplicate rows")
+        raise ContractError(f"{display_path(path)} is empty or contains duplicate rows")
     return records
 
 
@@ -82,6 +104,12 @@ def validate_stack(stack_dir: Path) -> None:
         raise ContractError(f"unsafe stack name: {stack}")
 
     contract = require_mapping(load(stack_dir / "stack.yml"), f"{stack}:stack.yml")
+    unknown_fields = sorted(set(contract) - CONTRACT_FIELDS)
+    if unknown_fields:
+        raise ContractError(
+            f"{stack}: unknown stack.yml field(s): {', '.join(unknown_fields)}"
+        )
+
     compose = require_mapping(load(stack_dir / "compose.yaml"), f"{stack}:compose.yaml")
     target_dir = safe_target(contract.get("stack_target_dir"), f"{stack}:stack_target_dir")
     compose_dest = safe_relative_file(
@@ -106,7 +134,8 @@ def validate_stack(stack_dir: Path) -> None:
             raise ContractError(f"{stack}: functional check references an unknown service")
         statuses = check.get("status_codes")
         if not isinstance(statuses, list) or not statuses or any(
-            not isinstance(code, int) or isinstance(code, bool) or code < 100 or code > 599 for code in statuses
+            not isinstance(code, int) or isinstance(code, bool) or code < 100 or code > 599
+            for code in statuses
         ):
             raise ContractError(f"{stack}: functional check has invalid status codes")
         check_names.add(name)
@@ -285,7 +314,21 @@ def validate_operational_coverage(stack_dir: Path) -> dict:
 
 
 def main() -> int:
-    managed = sorted(path.parent for path in STACKS.glob("*/stack.yml"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--stack-dir",
+        action="append",
+        type=Path,
+        default=[],
+        help="validate only this stack directory; may be supplied more than once",
+    )
+    args = parser.parse_args()
+
+    if args.stack_dir:
+        managed = [path.resolve() for path in args.stack_dir]
+    else:
+        managed = sorted(path.parent for path in STACKS.glob("*/stack.yml"))
+
     if not managed:
         raise ContractError("no managed stack contracts found")
     for stack_dir in managed:

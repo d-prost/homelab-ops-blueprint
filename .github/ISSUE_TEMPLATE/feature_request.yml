@@ -1,26 +1,22 @@
 ---
 name: Feature request
-description: Propose a reusable improvement to the blueprint.
+description: Suggest an improvement or new use case.
 title: "feature: "
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Operational problem
-      description: Describe the concrete problem before proposing implementation.
+      label: Problem
+      description: What are you trying to do that is awkward or not supported today?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed approach
-      description: Explain how this remains environment-neutral and testable.
-    validations:
-      required: true
+      label: Idea
+      description: Describe the approach you have in mind, if any.
   - type: textarea
-    id: safety
+    id: context
     attributes:
-      label: Safety impact
-      description: Explain effects on deployment guards, rollback, secrets, and Production boundaries.
-    validations:
-      required: true
+      label: Additional context
+      description: Add examples, alternatives or constraints that would help evaluate the request.

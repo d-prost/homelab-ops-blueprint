@@ -49,14 +49,35 @@ def main() -> int:
         manifest.write_text(original_manifest, encoding="utf-8")
 
         contract = stack_dir / "stack.yml"
+        original_contract = contract.read_text(encoding="utf-8")
+
         contract.write_text(
-            contract.read_text(encoding="utf-8").replace(
+            original_contract.replace(
                 "    dest: defaults.env\n",
                 "    dest: docker-compose.yml\n",
             ),
             encoding="utf-8",
         )
         expect_contract_error(module, stack_dir, "duplicate managed destination")
+        contract.write_text(original_contract, encoding="utf-8")
+
+        contract.write_text(
+            original_contract.replace(
+                "    dest: defaults.env\n",
+                "    dest: nested//defaults.env\n",
+            ),
+            encoding="utf-8",
+        )
+        expect_contract_error(module, stack_dir, "not a safe relative file")
+        contract.write_text(original_contract, encoding="utf-8")
+
+        contract.write_text(
+            original_contract
+            + "\nhomelab_clean_docker_argv:\n"
+            + "  - /bin/false\n",
+            encoding="utf-8",
+        )
+        expect_contract_error(module, stack_dir, "unknown stack.yml field")
 
     print("Stack contract regression tests passed.")
     return 0
