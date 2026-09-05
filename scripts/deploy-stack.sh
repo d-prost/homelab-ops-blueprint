@@ -141,6 +141,21 @@ if ((production_operation == 1)) && [[ "$git_ref" != "HEAD" ]]; then
     exit 1
   }
   release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
+
+  remote_tag_record="$(git ls-remote --tags origin "refs/tags/$git_ref^{}")"
+  [[ -n "$remote_tag_record" ]] || {
+    printf 'ERROR: release tag is not published on origin: %s\n' "$git_ref" >&2
+    exit 1
+  }
+  read -r remote_release_commit _ <<<"$remote_tag_record"
+  [[ "$remote_release_commit" == "$release_commit" ]] || {
+    printf 'ERROR: local release tag does not match origin: %s\n' "$git_ref" >&2
+    exit 1
+  }
+  if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+    printf 'ERROR: release commit is not part of origin/main history: %s\n' "$git_ref" >&2
+    exit 1
+  fi
 fi
 
 release_root="$repo_root"
@@ -160,11 +175,16 @@ if [[ "$git_ref" != "HEAD" ]]; then
   release_root="$tmp_root"
 fi
 
-stack_contract="$release_root/stacks/$stack/stack.yml"
+stack_dir="$release_root/stacks/$stack"
+stack_contract="$stack_dir/stack.yml"
 [[ -f "$stack_contract" ]] || {
   printf 'ERROR: stack release payload is unavailable at ref %s: %s\n' "$git_ref" "$stack" >&2
   exit 1
 }
+
+# Every selected payload is re-validated by the current control plane, including
+# historical release tags used for rollback.
+python3 "$repo_root/scripts/validate-stack-contracts.py" --stack-dir "$stack_dir"
 
 if ((production_operation == 1)); then
   readiness_args=(
