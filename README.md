@@ -12,13 +12,13 @@ The current implementation is aimed at single-host Docker Compose setups. `stack
 
 ## Quick start
 
-On a fresh Debian or Ubuntu host, the setup script installs the required packages, starts Docker, validates the repository and deploys the reference stack locally:
+On a fresh Debian or Ubuntu host, the setup script installs the required runtime packages, starts Docker, validates the repository and deploys the reference stack locally:
 
 ```bash
 bash scripts/setup.sh
 ```
 
-The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the local validation tools. It also creates any external Docker networks required by the selected example stack.
+The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts. It also creates any external Docker networks required by the selected example stack.
 
 To install the dependencies without deploying anything:
 
@@ -150,6 +150,8 @@ make validate     # syntax, contracts, tests and repository checks
 make lab-proof    # disposable deployment, injected failure and rollback test
 make ci           # CI-oriented validation including Gitleaks when available
 ```
+
+Local validation does not require the optional lint/security tools. CI installs ShellCheck, yamllint and Gitleaks and runs the stricter checks automatically.
 
 GitHub Actions runs static validation and a disposable rollback test. The rollback workflow deploys the Dozzle example, introduces a failure, restores the previous configuration and verifies the service again.
 
