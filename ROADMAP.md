@@ -13,14 +13,16 @@ The first stable release should be based on demonstrated behavior rather than re
 - a clean evaluation path that a new user can run from a fresh checkout;
 - at least one external test or adoption report, when available, with any reproducible compatibility issues either fixed or explicitly documented.
 
-The last item is an evidence goal, not a popularity threshold. Stars and download counts are not release criteria.
+Two stateless reference stacks and the clean evaluation path are now present. The remaining release criteria should be completed with real evidence rather than documentation-only claims.
+
+The external-test item is an evidence goal, not a popularity threshold. Stars and download counts are not release criteria.
 
 ## Next
 
 - add more unit tests around stack-contract and functional-check parsing;
-- add a second stateless example stack so the contract is exercised by more than Dozzle;
 - run and document a real remote-host integration test;
 - cover more failure cases around invalid manifests, target mismatches, failed health checks and incomplete rollback state;
+- collect at least one external clean-host or remote-target evaluation report when available;
 - prepare the first stable release once those paths have been exercised consistently.
 
 ## External validation
