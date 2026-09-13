@@ -8,7 +8,7 @@ A small Git + Ansible workflow for deploying Docker Compose stacks without addin
 
 I built this for homelab-sized environments where `docker compose up -d` is easy, but making changes safely and rolling them back is not. Git holds the stack definition, Ansible applies it, and the target is checked before a deployment is considered successful.
 
-The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` is the reference stack.
+The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` and `stacks/nginx/` are stateless reference stacks that exercise the same deployment contract with different applications.
 
 ## Who this is for
 
@@ -31,7 +31,7 @@ Configuration rollback and persistent application-data recovery deliberately rem
 
 The project is actively maintained and currently pre-1.0. The single-host stateless deployment path, contract validation, immutable image enforcement, functional verification and disposable rollback proof are implemented. Recovery-readiness gating for stateful stacks is also implemented.
 
-Before the first stable release, the project still needs broader reference coverage and more real-world remote-host validation. The current scope and remaining work are tracked in [`ROADMAP.md`](ROADMAP.md).
+Before the first stable release, the project still needs more real-world remote-host validation and deeper parser/failure-path coverage. The current scope and remaining work are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick start
 
@@ -43,13 +43,19 @@ cd homelab-ops-blueprint
 bash scripts/setup.sh
 ```
 
-The setup script installs the required runtime packages, starts Docker, validates the repository and deploys the reference stack locally. It installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
+The setup script installs the required runtime packages, starts Docker, validates the repository and deploys the Dozzle reference stack locally. It installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
 
-To install the dependencies and validate the checkout without deploying the reference stack:
+To install the dependencies and validate the checkout without deploying a reference stack:
 
 ```bash
 bash scripts/setup.sh --install-only
 make validate
+```
+
+To deploy the second reference stack instead:
+
+```bash
+bash scripts/setup.sh --stack nginx
 ```
 
 To use another stack after adding it to `stacks/`:
@@ -115,7 +121,7 @@ Stateful stacks can also require recovery-readiness evidence before a Production
 Each stack is self-contained:
 
 ```text
-stacks/dozzle/
+stacks/<name>/
 ├── compose.yaml
 ├── defaults.env
 ├── stack.yml
@@ -181,6 +187,8 @@ Local validation does not require the optional lint/security tools. CI installs 
 
 GitHub Actions runs static validation and a disposable rollback test. The rollback workflow deploys the Dozzle example, introduces a failure, restores the previous configuration and verifies the service again.
 
+For a short reviewer/adopter path that does not touch an existing Production environment, see [`docs/EVALUATION.md`](docs/EVALUATION.md).
+
 ## Repository layout
 
 | Path | Contents |
@@ -194,6 +202,7 @@ GitHub Actions runs static validation and a disposable rollback test. The rollba
 
 ## Documentation
 
+- [`docs/EVALUATION.md`](docs/EVALUATION.md) — reproducible reviewer/adopter evaluation path
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the deployment and rollback path is put together
 - [`docs/ADOPTION.md`](docs/ADOPTION.md) — adapting the repository to your own stacks
 - [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — stateful readiness checks and evidence format
@@ -203,7 +212,7 @@ GitHub Actions runs static validation and a disposable rollback test. The rollba
 
 ## Project status
 
-The single-host stateless deployment path and disposable rollback test are implemented. Remote targets work without a Git checkout on the target, although the project still needs more real-world remote-host coverage. Stateful readiness support is in place, while richer stateful declarations, a complete synthetic stateful example and multi-host deployment are still planned.
+The single-host stateless deployment path and disposable rollback test are implemented, with Dozzle and Nginx as separate public reference stacks. Remote targets work without a Git checkout on the target, although the project still needs more real-world remote-host coverage. Stateful readiness support is in place, while richer stateful declarations, a complete synthetic stateful example and multi-host deployment are still planned.
 
 The project is intentionally conservative about claims of support: functionality moves out of the roadmap only after it has a reproducible proof or enough real-world coverage to justify the claim.
 
