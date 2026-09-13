@@ -1,6 +1,8 @@
 # Adapting the repository
 
-The example setup uses Dozzle, but the deployment code is meant to work with other Docker Compose stacks as well.
+The repository includes two stateless reference stacks, Dozzle and Nginx, so the deployment contract can be inspected against more than one application shape. The deployment code is intended to work with other Docker Compose stacks as well.
+
+Before adapting it to an existing environment, use the disposable evaluation path in [`EVALUATION.md`](EVALUATION.md) on a non-critical host. That separates evaluation of the public workflow from any private Production assumptions.
 
 ## 1. Configure your host
 
@@ -21,7 +23,7 @@ bash scripts/deploy-stack.sh dozzle --check
 
 ## 2. Add a stack
 
-Start with the structure used by `stacks/dozzle/`:
+Start with the structure used by `stacks/dozzle/` or `stacks/nginx/`:
 
 ```text
 stacks/my-stack/
@@ -60,7 +62,7 @@ For changes to the deployment or rollback code itself, run the disposable integr
 make lab-proof
 ```
 
-For a new service, it is worth testing the first real deployment on a disposable or non-critical target before adopting it on the main host. The first deployment has no earlier managed configuration to restore automatically.
+For a new service, test the first real deployment on a disposable or non-critical target before adopting it on the main host. The first deployment has no earlier managed configuration to restore automatically.
 
 ## 4. Deploy
 
@@ -83,6 +85,22 @@ bash scripts/rollback-stack.sh my-stack release-YYYYMMDD-HHMMSSZ
 ```
 
 The selected tag supplies the stack payload. The current checkout still supplies the inventory, Ansible role and validation code.
+
+## Report an adoption result
+
+Reports from environments outside the repository's own CI are useful because they expose assumptions that a single maintainer's setup may not reveal.
+
+A useful public report includes:
+
+- Linux distribution and version;
+- Docker Engine and Compose versions;
+- Ansible Core version;
+- local or remote target;
+- which stack or custom stack was used;
+- whether `make validate`, Check Mode and the deployment succeeded;
+- the smallest reproducible error if something failed.
+
+Use a GitHub Issue for reproducible defects or a Discussion for general adoption feedback. Keep private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence out of public GitHub content.
 
 ## Stateful stacks
 

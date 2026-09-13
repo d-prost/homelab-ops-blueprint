@@ -19,7 +19,9 @@ The project follows Semantic Versioning once tagged public releases begin.
 - stateful-service adoption and recovery checklist;
 - machine-checkable stateful recovery-readiness gate consuming private evidence outside public Git;
 - exact public-stack-generation hashing for recovery-evidence applicability;
-- recovery-readiness regression coverage for stale evidence, failed restore, service-scope mismatch, unsafe evidence files, generation changes, and historical-classification bypasses.
+- recovery-readiness regression coverage for stale evidence, failed restore, service-scope mismatch, unsafe evidence files, generation changes, and historical-classification bypasses;
+- Nginx as a second stateless reference stack using the same deployment contract as the Dozzle example;
+- a reproducible evaluation guide for reviewers and prospective adopters.
 
 ### Changed
 
@@ -27,4 +29,6 @@ The project follows Semantic Versioning once tagged public releases begin.
 - derive rollback eligibility from a prior deployment receipt and verify the restored release with its exact Git contract;
 - support nested managed-file paths and remove candidate-only files during rollback;
 - require environment-supplied backup-freshness policy instead of embedding one public cadence;
-- invalidate stateful readiness evidence after recovery-relevant public runtime changes while leaving monitoring-only intent outside the proof hash.
+- invalidate stateful readiness evidence after recovery-relevant public runtime changes while leaving monitoring-only intent outside the proof hash;
+- improve first-time onboarding with a complete clone/setup path, explicit project scope, maturity boundaries and external evaluation guidance;
+- define evidence-based criteria for the first stable release instead of treating repository age or popularity as release gates.

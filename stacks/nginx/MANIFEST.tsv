@@ -1,0 +1,2 @@
+compose.yaml	/opt/homelab-ops/stacks/nginx/docker-compose.yml
+defaults.env	/opt/homelab-ops/stacks/nginx/defaults.env
