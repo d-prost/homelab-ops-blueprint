@@ -1,0 +1,15 @@
+---
+name: homelab-ops-nginx-demo
+
+services:
+  nginx:
+    image: ${NGINX_IMAGE:?Set immutable NGINX_IMAGE RepoDigest}
+    container_name: homelab-ops-demo-nginx
+    restart: unless-stopped
+    networks:
+      - homelab_ops_nginx_demo
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  homelab_ops_nginx_demo: {}
