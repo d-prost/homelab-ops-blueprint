@@ -10,20 +10,46 @@ I built this for homelab-sized environments where `docker compose up -d` is easy
 
 The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` is the reference stack.
 
+## Who this is for
+
+This project is intended for operators who:
+
+- run one or a small number of Linux hosts with Docker Compose;
+- want Git-reviewed, reproducible changes without adopting Kubernetes or another full orchestration platform;
+- care about validating the target before a change, checking the application after it starts, and having an explicit configuration rollback path;
+- want public-safe automation that can be adapted to a private environment without publishing private inventories, secrets, backup locations or recovery evidence.
+
+It is not intended to be a general-purpose scheduler, service mesh, secrets manager or replacement for application-aware backup and restore tooling.
+
+## What makes the workflow different
+
+The deployment path treats a Git commit as a candidate, not as proof that Production is healthy. Before a candidate is accepted, the workflow checks the repository state, target identity, stack contract, immutable image references and functional checks on the target. If a managed configuration change fails and the previous accepted configuration can be reconstructed, the deployment path restores that configuration and verifies it again.
+
+Configuration rollback and persistent application-data recovery deliberately remain separate mechanisms. Stateful services can require independent recovery-readiness evidence before a Production mutation is allowed.
+
+## Project maturity
+
+The project is actively maintained and currently pre-1.0. The single-host stateless deployment path, contract validation, immutable image enforcement, functional verification and disposable rollback proof are implemented. Recovery-readiness gating for stateful stacks is also implemented.
+
+Before the first stable release, the project still needs broader reference coverage and more real-world remote-host validation. The current scope and remaining work are tracked in [`ROADMAP.md`](ROADMAP.md).
+
 ## Quick start
 
-On a fresh Debian or Ubuntu host, the setup script installs the required runtime packages, starts Docker, validates the repository and deploys the reference stack locally:
+On a fresh Debian or Ubuntu host, clone the repository and run the setup script:
 
 ```bash
+git clone https://github.com/d-prost/homelab-ops-blueprint.git
+cd homelab-ops-blueprint
 bash scripts/setup.sh
 ```
 
-The script installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
+The setup script installs the required runtime packages, starts Docker, validates the repository and deploys the reference stack locally. It installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
 
-To install the dependencies without deploying anything:
+To install the dependencies and validate the checkout without deploying the reference stack:
 
 ```bash
 bash scripts/setup.sh --install-only
+make validate
 ```
 
 To use another stack after adding it to `stacks/`:
@@ -172,16 +198,20 @@ GitHub Actions runs static validation and a disposable rollback test. The rollba
 - [`docs/ADOPTION.md`](docs/ADOPTION.md) — adapting the repository to your own stacks
 - [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — stateful readiness checks and evidence format
 - [`docs/RELEASES.md`](docs/RELEASES.md) — project releases and operational tags
-- [`ROADMAP.md`](ROADMAP.md) — planned work
+- [`ROADMAP.md`](ROADMAP.md) — planned work and stable-release criteria
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request notes
 
 ## Project status
 
 The single-host stateless deployment path and disposable rollback test are implemented. Remote targets work without a Git checkout on the target, although the project still needs more real-world remote-host coverage. Stateful readiness support is in place, while richer stateful declarations, a complete synthetic stateful example and multi-host deployment are still planned.
 
-## Contributing
+The project is intentionally conservative about claims of support: functionality moves out of the roadmap only after it has a reproducible proof or enough real-world coverage to justify the claim.
+
+## Contributing and feedback
 
 Run `make validate` before opening a pull request. If a change affects deployment or rollback behavior, run `make lab-proof` as well.
+
+External deployment reports are useful even when no code change is needed. If you try the blueprint on a disposable or non-critical host, open a GitHub Discussion or Issue with the Linux distribution, Docker/Compose version, whether the target was local or remote, and the smallest reproducible details for anything that failed. Do not include credentials, private hostnames, addresses or recovery evidence.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
 
