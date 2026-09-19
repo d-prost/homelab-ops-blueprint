@@ -4,16 +4,27 @@ This is a working list of the next things I want to improve. It is not tied to f
 
 ## First stable release criteria
 
-The first stable release should be based on demonstrated behavior rather than repository age or feature count. Before `v1.0.0`, the project should have:
+The first stable release is governed by the normative transaction contract in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md). The goal before `v1.0.0` is to prove that contract, not to add platform breadth.
+
+Existing baseline criteria remain:
 
 - focused unit coverage around stack-contract and functional-check parsing;
 - at least two stateless reference stacks so the contract is exercised by more than one application shape;
-- a documented real remote-host integration run in addition to the local disposable Lab proof;
-- regression coverage for important manifest, target-identity, failed-health-check and incomplete-rollback cases;
 - a clean evaluation path that a new user can run from a fresh checkout;
-- at least one external test or adoption report, when available, with any reproducible compatibility issues either fixed or explicitly documented.
+- at least one external clean-host or remote-target evaluation report, when available, with reproducible compatibility issues fixed or explicitly documented.
 
-Two stateless reference stacks and the clean evaluation path are now present. The remaining release criteria should be completed with real evidence rather than documentation-only claims.
+The remaining v1 proof work is transaction-focused:
+
+- freeze the candidate and tooling identities before mutation;
+- verify SSH transport identity and declared target identity;
+- prove rollback material and required immutable images are available before mutation;
+- document and prove a real remote-host SSH deployment;
+- cover pre-mutation refusals, functional failures, rollback failures and interrupted transactions;
+- prove host-global concurrency locking and idempotency;
+- define and test durable acceptance-record commit semantics and persistence failure;
+- enforce appropriate GitHub `main` change controls for the maintainer model.
+
+Two stateless reference stacks and the clean evaluation path are already present. The remaining release criteria should be completed with real evidence rather than documentation-only claims.
 
 The external-test item is an evidence goal, not a popularity threshold. Stars and download counts are not release criteria.
 
