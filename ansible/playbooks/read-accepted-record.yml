@@ -1,0 +1,44 @@
+---
+- name: Read the last accepted deployment record without mutating the target
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+
+  pre_tasks:
+    - name: Require safe transaction metadata
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name is match('^[a-z0-9][a-z0-9-]*$')
+          - homelab_transaction_root is defined
+          - homelab_transaction_root is match('^/.+')
+        fail_msg: A safe stack name and absolute transaction root are required.
+
+  tasks:
+    - name: Inspect accepted deployment record
+      ansible.builtin.stat:
+        path: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+      register: accepted_record_stat
+      changed_when: false
+      check_mode: false
+
+    - name: Read accepted deployment record
+      ansible.builtin.slurp:
+        src: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+      register: accepted_record
+      when: accepted_record_stat.stat.exists
+      changed_when: false
+      check_mode: false
+
+    - name: Persist accepted deployment record into the frozen transaction context
+      ansible.builtin.copy:
+        dest: "{{ homelab_transaction_root }}/previous.record"
+        mode: "0600"
+        content: "{{ accepted_record.content | b64decode }}"
+      delegate_to: localhost
+      become: false
+      when: accepted_record_stat.stat.exists
+      changed_when: false
+      check_mode: false
