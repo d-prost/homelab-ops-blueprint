@@ -17,7 +17,11 @@ import sys, yaml
 path=Path(sys.argv[1]); model=yaml.safe_load(path.read_text()); model['services']['dozzle']['entrypoint']=['/bin/sh','-c','exit 42']; path.write_text(yaml.safe_dump(model,sort_keys=False))
 PY_INNER
 set +e
-ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" ansible-playbook -i "$repo_root/ansible/inventory/lab/hosts.yml" "$repo_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_repo_root="$repo_root" -e homelab_release_root="$tmp_root" >"$failure_log" 2>&1
+previous_commit="$(git rev-parse HEAD)"
+previous_record_id="$(sudo sha256sum "$record_file" | awk '{print $1}')"
+contract_hash="$(sha256sum "$tmp_root/stacks/dozzle/stack.yml" | awk '{print $1}')"
+manifest_hash="$(sha256sum "$tmp_root/stacks/dozzle/MANIFEST.tsv" | awk '{print $1}')"
+ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" ansible-playbook -i "$repo_root/ansible/inventory/lab/hosts.yml" "$repo_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_tooling_commit="$previous_commit" -e homelab_transaction_id=lab-failure-test -e homelab_contract_hash="$contract_hash" -e homelab_manifest_hash="$manifest_hash" -e homelab_previous_accepted_commit="$previous_commit" -e homelab_previous_record_id="$previous_record_id" -e homelab_previous_release_root="$repo_root" -e homelab_repo_root="$repo_root" -e homelab_release_root="$tmp_root" >"$failure_log" 2>&1
 failed_rc=$?; set -e
 ((failed_rc != 0)) || { cat "$failure_log" >&2; exit 1; }
 grep -q 'prior managed files were restored' "$failure_log" || { cat "$failure_log" >&2; exit 1; }
