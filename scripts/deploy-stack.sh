@@ -228,6 +228,18 @@ if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
   become_args+=(--ask-become-pass)
 fi
 
+contract_hash="$(sha256sum "$stack_contract" | awk '{print $1}')"
+manifest_hash="$(sha256sum "$stack_dir/MANIFEST.tsv" | awk '{print $1}')"
+
+ansible-playbook -i "$inventory_file" \
+  "$repo_root/ansible/playbooks/preflight.yml" \
+  -e "stack_name=$stack" \
+  -e "homelab_repo_root=$repo_root" \
+  -e "homelab_release_root=$release_root" \
+  "${become_args[@]}"
+
+# Resolve the previous accepted state only after the selected target passes the
+# existing read-only preflight identity checks, but still before any mutation.
 ansible-playbook -i "$inventory_file" \
   "$repo_root/ansible/playbooks/read-accepted-record.yml" \
   -e "stack_name=$stack" \
@@ -248,16 +260,6 @@ if [[ -f "$transaction_root/previous.record" ]]; then
   bash "$repo_root/scripts/materialize-git-snapshot.sh" \
     "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null
 fi
-
-contract_hash="$(sha256sum "$stack_contract" | awk '{print $1}')"
-manifest_hash="$(sha256sum "$stack_dir/MANIFEST.tsv" | awk '{print $1}')"
-
-ansible-playbook -i "$inventory_file" \
-  "$repo_root/ansible/playbooks/preflight.yml" \
-  -e "stack_name=$stack" \
-  -e "homelab_repo_root=$repo_root" \
-  -e "homelab_release_root=$release_root" \
-  "${become_args[@]}"
 
 deploy_args=(
   -i "$inventory_file"
