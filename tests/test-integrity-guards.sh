@@ -9,7 +9,13 @@ grep -q 'prior managed files were restored' "$repo_root/ansible/roles/managed_st
 grep -q 'stack_functional_checks' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'delegate_to: localhost' "$repo_root/ansible/playbooks/preflight.yml"
 grep -q 'ansible.builtin.script:' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
-grep -q 'Load exact prior contract from Git history' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'Load exact prior contract from frozen transaction snapshot' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+if grep -q '/usr/bin/git' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"; then
+  printf 'FAIL: managed role must not consult Git after transaction preparation.\n' >&2
+  exit 1
+fi
+grep -q 'read-accepted-record.yml' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'materialize-git-snapshot.sh' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'Historical refs provide' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'MANIFEST.tsv differs from stack.yml' "$repo_root/scripts/validate-stack-contracts.py"
 printf 'Integrity guard tests passed.\n'

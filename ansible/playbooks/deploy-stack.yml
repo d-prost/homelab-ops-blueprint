@@ -16,12 +16,26 @@
           - stack_name is match('^[a-z0-9][a-z0-9-]*$')
           - homelab_release_commit is defined
           - homelab_release_commit is match('^[0-9a-f]{40}$')
+          - homelab_tooling_commit is defined
+          - homelab_tooling_commit is match('^[0-9a-f]{40}$')
+          - homelab_transaction_id is defined
+          - homelab_transaction_id | length > 0
+          - homelab_contract_hash is defined
+          - homelab_contract_hash is match('^[0-9a-f]{64}$')
+          - homelab_manifest_hash is defined
+          - homelab_manifest_hash is match('^[0-9a-f]{64}$')
+          - homelab_previous_accepted_commit is defined
+          - homelab_previous_accepted_commit == '' or homelab_previous_accepted_commit is match('^[0-9a-f]{40}$')
+          - homelab_previous_record_id is defined
+          - homelab_previous_record_id == '' or homelab_previous_record_id is match('^[0-9a-f]{64}$')
+          - homelab_previous_release_root is defined
+          - homelab_previous_release_root == '' or homelab_previous_release_root is match('^/.+')
           - homelab_repo_root is defined
           - homelab_repo_root is match('^/.+')
           - homelab_release_root is defined
           - homelab_release_root is match('^/.+')
         fail_msg: >-
-          A safe stack name, exact release commit and absolute control-plane
+          Frozen transaction metadata, exact commits and absolute control-plane
           and payload roots are required.
 
     - name: Require explicit environment classification

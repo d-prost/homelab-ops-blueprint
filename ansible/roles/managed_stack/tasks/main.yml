@@ -43,54 +43,28 @@
   loop_control:
     label: "{{ item.dest | default('invalid-entry') }}"
 
-- name: Inspect prior deployment record
-  ansible.builtin.stat:
-    path: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
-  register: stack_deployment_record_stat
-  changed_when: false
-
-- name: Read prior deployment record
-  ansible.builtin.slurp:
-    src: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
-  register: stack_deployment_record
-  when: stack_deployment_record_stat.stat.exists
-
-- name: Parse prior deployed commit
+- name: Determine whether a previous accepted state exists
   ansible.builtin.set_fact:
-    stack_previous_commit_matches: >-
-      {{
-        stack_deployment_record.content
-        | b64decode
-        | regex_findall('(?m)^commit=([0-9a-f]{40})$')
-      }}
-  when: stack_deployment_record_stat.stat.exists
+    stack_previous_contract_available: "{{ homelab_previous_accepted_commit | length > 0 }}"
 
-- name: Require one authoritative prior deployed commit
+- name: Require consistent frozen previous-state metadata
   ansible.builtin.assert:
     that:
-      - stack_previous_commit_matches | length == 1
-    fail_msg: Prior deployment record does not contain exactly one valid commit.
-  when: stack_deployment_record_stat.stat.exists
+      - >-
+        (stack_previous_contract_available | bool and
+         homelab_previous_record_id | length == 64 and
+         homelab_previous_release_root | length > 0)
+        or
+        (not (stack_previous_contract_available | bool) and
+         homelab_previous_record_id == '' and
+         homelab_previous_release_root == '')
+    fail_msg: Frozen previous accepted-state metadata is incomplete.
 
-- name: Load exact prior contract from Git history on the control plane
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/git
-      - -C
-      - "{{ homelab_repo_root }}"
-      - show
-      - "{{ stack_previous_commit_matches[0] }}:stacks/{{ stack_name }}/stack.yml"
-  delegate_to: localhost
-  become: false
-  register: stack_previous_contract_raw
-  changed_when: false
-  check_mode: false
-  when: stack_deployment_record_stat.stat.exists
-
-- name: Parse exact prior release contract
-  ansible.builtin.set_fact:
-    stack_previous_contract: "{{ stack_previous_contract_raw.stdout | from_yaml }}"
-  when: stack_deployment_record_stat.stat.exists
+- name: Load exact prior contract from frozen transaction snapshot
+  ansible.builtin.include_vars:
+    file: "{{ homelab_previous_release_root }}/stacks/{{ stack_name }}/stack.yml"
+    name: stack_previous_contract
+  when: stack_previous_contract_available | bool
 
 - name: Validate prior release rollback boundary
   ansible.builtin.assert:
@@ -104,45 +78,52 @@
     fail_msg: >-
       Prior release contract is unavailable or incompatible with the current
       target. Refusing an unverified automatic rollback boundary.
-  when: stack_deployment_record_stat.stat.exists
+  when: stack_previous_contract_available | bool
 
 - name: Validate prior managed file entries
   ansible.builtin.assert:
     that:
+      - item.src is defined
       - item.dest is defined
       - item.mode is defined
+      - item.src is string
       - item.dest is string
       - item.mode is string
+      - item.src is match('^[A-Za-z0-9._/-]+$')
       - item.dest is match('^[A-Za-z0-9._/-]+$')
+      - not item.src.startswith('/')
       - not item.dest.startswith('/')
+      - "'..' not in item.src.split('/')"
+      - "'.' not in item.src.split('/')"
       - "'..' not in item.dest.split('/')"
       - "'.' not in item.dest.split('/')"
+      - "'//' not in item.src"
       - "'//' not in item.dest"
+      - not item.src.endswith('/')
       - not item.dest.endswith('/')
       - item.mode is match('^0[0-7]{3}$')
     fail_msg: Prior release contract contains an unsafe managed file entry.
   loop: "{{ stack_previous_contract.stack_managed_files }}"
   loop_control:
     label: "{{ item.dest | default('invalid-entry') }}"
-  when: stack_deployment_record_stat.stat.exists
+  when: stack_previous_contract_available | bool
 
 - name: Set exact transaction boundaries
   ansible.builtin.set_fact:
-    stack_candidate_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}"
+    stack_candidate_dir: "{{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_transaction_id }}"
     stack_rollback_dir: >-
-      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_release_commit }}-rollback
-    stack_previous_contract_available: "{{ stack_deployment_record_stat.stat.exists }}"
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_transaction_id }}-rollback
     stack_previous_managed_files: >-
       {{
         stack_previous_contract.stack_managed_files
-        if stack_deployment_record_stat.stat.exists
+        if stack_previous_contract_available | bool
         else []
       }}
     stack_previous_managed_dests: >-
       {{
         stack_previous_contract.stack_managed_files
         | map(attribute='dest') | list
-        if stack_deployment_record_stat.stat.exists
+        if stack_previous_contract_available | bool
         else []
       }}
     stack_current_managed_dests: "{{ stack_managed_files | map(attribute='dest') | list }}"
@@ -240,27 +221,12 @@
       loop: "{{ stack_managed_files }}"
       when: (item.dest | dirname) != '.'
 
-    - name: Inspect prior managed target files
-      ansible.builtin.stat:
-        path: "{{ stack_target_dir }}/{{ item.dest }}"
-      loop: "{{ stack_previous_managed_files }}"
-      register: stack_previous_target_files
-      changed_when: false
-      when: stack_previous_contract_available | bool
-
     - name: Determine whether automatic rollback is available
       ansible.builtin.set_fact:
         stack_rollback_available: >-
           {{
             not ansible_check_mode
             and stack_previous_contract_available
-            and
-            (
-              stack_previous_target_files.results | default([])
-              | selectattr('stat.exists', 'equalto', false)
-              | list
-              | length
-            ) == 0
           }}
 
     - name: Create transient rollback directory
@@ -284,11 +250,10 @@
         - stack_rollback_available | bool
         - (item.dest | dirname) != '.'
 
-    - name: Capture prior managed files for transaction rollback
+    - name: Stage frozen prior managed files for transaction rollback
       ansible.builtin.copy:
-        src: "{{ stack_target_dir }}/{{ item.dest }}"
+        src: "{{ homelab_previous_release_root }}/stacks/{{ stack_name }}/{{ item.src }}"
         dest: "{{ stack_rollback_dir }}/{{ item.dest }}"
-        remote_src: true
         owner: root
         group: root
         mode: "{{ item.mode }}"
@@ -296,14 +261,14 @@
       loop: "{{ stack_previous_managed_files }}"
       when: stack_rollback_available | bool
 
-    - name: Capture exact prior contract for rollback verification
+    - name: Stage exact frozen prior contract for rollback verification
       ansible.builtin.copy:
+        src: "{{ homelab_previous_release_root }}/stacks/{{ stack_name }}/stack.yml"
         dest: "{{ stack_rollback_dir }}/stack.yml"
         owner: root
         group: root
         mode: "0600"
         backup: false
-        content: "{{ stack_previous_contract_raw.stdout }}"
       when: stack_rollback_available | bool
 
     - name: Install allowlisted managed files atomically
@@ -385,7 +350,7 @@
         mode: "0750"
       when: not ansible_check_mode
 
-    - name: Record deployed Git commit
+    - name: Record accepted transaction provenance
       ansible.builtin.copy:
         dest: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
         owner: root
@@ -395,6 +360,12 @@
         content: |
           stack={{ stack_name }}
           commit={{ homelab_release_commit }}
+          tooling_commit={{ homelab_tooling_commit }}
+          transaction_id={{ homelab_transaction_id }}
+          contract_hash={{ homelab_contract_hash }}
+          manifest_hash={{ homelab_manifest_hash }}
+          previous_commit={{ homelab_previous_accepted_commit }}
+          previous_record_id={{ homelab_previous_record_id }}
           target={{ stack_target_dir }}
           verified=functional
       when: not ansible_check_mode
