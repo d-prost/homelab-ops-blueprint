@@ -221,27 +221,12 @@
       loop: "{{ stack_managed_files }}"
       when: (item.dest | dirname) != '.'
 
-    - name: Inspect prior managed target files
-      ansible.builtin.stat:
-        path: "{{ stack_target_dir }}/{{ item.dest }}"
-      loop: "{{ stack_previous_managed_files }}"
-      register: stack_previous_target_files
-      changed_when: false
-      when: stack_previous_contract_available | bool
-
     - name: Determine whether automatic rollback is available
       ansible.builtin.set_fact:
         stack_rollback_available: >-
           {{
             not ansible_check_mode
             and stack_previous_contract_available
-            and
-            (
-              stack_previous_target_files.results | default([])
-              | selectattr('stat.exists', 'equalto', false)
-              | list
-              | length
-            ) == 0
           }}
 
     - name: Create transient rollback directory
@@ -265,11 +250,10 @@
         - stack_rollback_available | bool
         - (item.dest | dirname) != '.'
 
-    - name: Capture prior managed files for transaction rollback
+    - name: Stage frozen prior managed files for transaction rollback
       ansible.builtin.copy:
-        src: "{{ stack_target_dir }}/{{ item.dest }}"
+        src: "{{ homelab_previous_release_root }}/stacks/{{ stack_name }}/{{ item.src }}"
         dest: "{{ stack_rollback_dir }}/{{ item.dest }}"
-        remote_src: true
         owner: root
         group: root
         mode: "{{ item.mode }}"
@@ -277,14 +261,14 @@
       loop: "{{ stack_previous_managed_files }}"
       when: stack_rollback_available | bool
 
-    - name: Capture exact prior contract for rollback verification
+    - name: Stage exact frozen prior contract for rollback verification
       ansible.builtin.copy:
+        src: "{{ homelab_previous_release_root }}/stacks/{{ stack_name }}/stack.yml"
         dest: "{{ stack_rollback_dir }}/stack.yml"
         owner: root
         group: root
         mode: "0600"
         backup: false
-        content: "{{ stack_previous_contract_raw.stdout }}"
       when: stack_rollback_available | bool
 
     - name: Install allowlisted managed files atomically
@@ -366,7 +350,7 @@
         mode: "0750"
       when: not ansible_check_mode
 
-    - name: Record deployed Git commit
+    - name: Record accepted transaction provenance
       ansible.builtin.copy:
         dest: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
         owner: root
@@ -376,6 +360,12 @@
         content: |
           stack={{ stack_name }}
           commit={{ homelab_release_commit }}
+          tooling_commit={{ homelab_tooling_commit }}
+          transaction_id={{ homelab_transaction_id }}
+          contract_hash={{ homelab_contract_hash }}
+          manifest_hash={{ homelab_manifest_hash }}
+          previous_commit={{ homelab_previous_accepted_commit }}
+          previous_record_id={{ homelab_previous_record_id }}
           target={{ stack_target_dir }}
           verified=functional
       when: not ansible_check_mode
