@@ -158,8 +158,11 @@ fi
 tooling_commit="$(git rev-parse 'HEAD^{commit}')"
 if [[ "$git_ref" == "HEAD" ]]; then
   release_commit="$tooling_commit"
-else
+elif ((production_operation == 1)); then
   release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
+else
+  git cat-file -e "${git_ref}^{commit}"
+  release_commit="$(git rev-parse "${git_ref}^{commit}")"
 fi
 
 transaction_id="$(python3 - <<'PY'
