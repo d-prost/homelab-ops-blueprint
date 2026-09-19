@@ -25,6 +25,13 @@ grep -Fq -- 'HOMELAB_RECOVERY_EVIDENCE' "$deploy" || fail 'Production stateful r
 grep -Fq -- 'HOMELAB_BACKUP_MAX_AGE_SECONDS' "$deploy" || fail 'Production stateful readiness must consume environment freshness policy'
 
 grep -Fq -- 'validate-stack-contracts.py' "$deploy" || fail 'selected release payload must use the current contract validator'
+grep -Fq -- 'materialize-git-snapshot.sh' "$deploy" || fail 'deployment must freeze Git payloads before mutation'
+grep -Fq -- 'read-accepted-record.yml' "$deploy" || fail 'deployment must resolve previous accepted state before mutation'
+grep -Fq -- 'homelab_tooling_commit' "$deploy" || fail 'deployment must carry an independent tooling commit'
+grep -Fq -- 'homelab_previous_release_root' "$deploy" || fail 'deployment must pass a frozen previous accepted payload'
+if grep -Fq -- '/usr/bin/git' "$managed_role"; then
+  fail 'managed role must not consult Git after transaction preparation'
+fi
 grep -Fq -- '--stack-dir' "$deploy" || fail 'deployment must validate the exact selected stack directory'
 grep -Fq -- 'git ls-remote --tags origin' "$deploy" || fail 'Production release tags must be checked against origin'
 grep -Fq -- 'git merge-base --is-ancestor' "$deploy" || fail 'Production release commits must belong to origin/main history'
@@ -35,6 +42,7 @@ if grep -Fq -- 'file: "{{ stack_source_dir }}/stack.yml"' "$preflight_playbook";
 fi
 
 grep -Fq -- 'stack_retired_dests' "$managed_role" || fail 'forward convergence must track files removed from the managed boundary'
+grep -Fq -- 'Stage frozen prior managed files for transaction rollback' "$managed_role" || fail 'rollback must use the frozen accepted payload'
 grep -Fq -- 'Remove files no longer managed by the candidate' "$managed_role" || fail 'forward convergence must remove retired managed files'
 remove_orphans_count="$(grep -Fc -- '--remove-orphans' "$managed_role")"
 ((remove_orphans_count >= 2)) || fail 'candidate apply and rollback must both remove orphan Compose services'
