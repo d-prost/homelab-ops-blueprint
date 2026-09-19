@@ -1,5 +1,7 @@
 # Architecture
 
+The normative transaction semantics targeted for `v1.0.0` are defined in [`TRANSACTION_MODEL.md`](TRANSACTION_MODEL.md). This document describes the current architecture and implementation boundaries; where pre-1.0 behavior has not yet reached the transaction contract, the transaction model is the target and the roadmap tracks the proof work.
+
 This repository uses Git as the source for stack definitions and Ansible as the deployment mechanism. The important rule is simple: starting containers is not enough to call a deployment successful. The target has to match the selected host, the stack contract has to be valid, and the service checks have to pass.
 
 ## Main pieces
