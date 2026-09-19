@@ -89,9 +89,6 @@ if [[ "$git_ref" != "HEAD" ]] && ! git check-ref-format --branch "$git_ref" >/de
   exit 2
 fi
 
-git cat-file -e "${git_ref}^{commit}"
-release_commit="$(git rev-parse "${git_ref}^{commit}")"
-
 runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 [[ -d "$runtime_dir" && "$(stat -c %u "$runtime_dir")" == "$(id -u)" ]] || {
   printf 'ERROR: a private operator runtime directory is required: %s\n' "$runtime_dir" >&2
@@ -158,22 +155,31 @@ if ((production_operation == 1)) && [[ "$git_ref" != "HEAD" ]]; then
   fi
 fi
 
-release_root="$repo_root"
-tmp_root=""
+tooling_commit="$(git rev-parse 'HEAD^{commit}')"
+if [[ "$git_ref" == "HEAD" ]]; then
+  release_commit="$tooling_commit"
+else
+  release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
+fi
+
+transaction_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+transaction_root="$(mktemp -d /tmp/homelab-ops-transaction.XXXXXXXX)"
+release_root="$transaction_root/candidate"
+previous_release_root=""
+previous_accepted_commit=""
+previous_record_id=""
+
 cleanup() {
-  [[ -z "${tmp_root:-}" ]] || rm -rf -- "$tmp_root"
+  rm -rf -- "$transaction_root"
 }
 trap cleanup EXIT
 
-if [[ "$git_ref" != "HEAD" ]]; then
-  git cat-file -e "${release_commit}:stacks/$stack/stack.yml" 2>/dev/null || {
-    printf 'ERROR: stack is not managed at ref %s: %s\n' "$git_ref" "$stack" >&2
-    exit 1
-  }
-  tmp_root="$(mktemp -d /tmp/homelab-ops-release.XXXXXXXX)"
-  git archive "$release_commit" "stacks/$stack" | tar -x -C "$tmp_root"
-  release_root="$tmp_root"
-fi
+bash "$repo_root/scripts/materialize-git-snapshot.sh" \
+  "$repo_root" "$release_commit" "$release_root" "stacks/$stack" >/dev/null
 
 stack_dir="$release_root/stacks/$stack"
 stack_contract="$stack_dir/stack.yml"
@@ -214,7 +220,30 @@ inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
 export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
 bash "$repo_root/scripts/assert-ansible-hosts.sh" "$inventory_file"
 
-become_args=()
+ansible-playbook -i "$inventory_file" \
+  "$repo_root/ansible/playbooks/read-accepted-record.yml" \
+  -e "stack_name=$stack" \
+  -e "homelab_transaction_root=$transaction_root" \
+  "${become_args[@]}"
+
+if [[ -f "$transaction_root/previous.record" ]]; then
+  mapfile -t previous_commit_matches < <(
+    sed -nE 's/^commit=([0-9a-f]{40})$/\1/p' "$transaction_root/previous.record"
+  )
+  (("${#previous_commit_matches[@]}" == 1)) || {
+    printf 'ERROR: prior deployment record does not contain exactly one valid commit.\n' >&2
+    exit 1
+  }
+  previous_accepted_commit="${previous_commit_matches[0]}"
+  previous_record_id="$(sha256sum "$transaction_root/previous.record" | awk '{print $1}')"
+  previous_release_root="$transaction_root/previous"
+  bash "$repo_root/scripts/materialize-git-snapshot.sh" \
+    "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null
+fi
+
+contract_hash="$(sha256sum "$stack_contract" | awk '{print $1}')"
+manifest_hash="$(sha256sum "$stack_dir/MANIFEST.tsv" | awk '{print $1}')"
+
 if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
   become_args+=(--ask-become-pass)
 fi
@@ -231,6 +260,13 @@ deploy_args=(
   "$repo_root/ansible/playbooks/deploy-stack.yml"
   -e "stack_name=$stack"
   -e "homelab_release_commit=$release_commit"
+  -e "homelab_tooling_commit=$tooling_commit"
+  -e "homelab_transaction_id=$transaction_id"
+  -e "homelab_contract_hash=$contract_hash"
+  -e "homelab_manifest_hash=$manifest_hash"
+  -e "homelab_previous_accepted_commit=$previous_accepted_commit"
+  -e "homelab_previous_record_id=$previous_record_id"
+  -e "homelab_previous_release_root=$previous_release_root"
   -e "homelab_repo_root=$repo_root"
   -e "homelab_release_root=$release_root"
   "${become_args[@]}"
