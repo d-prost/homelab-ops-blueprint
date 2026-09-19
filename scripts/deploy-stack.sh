@@ -69,7 +69,7 @@ case "$inventory" in
     ;;
 esac
 
-for required_command in ansible-inventory ansible-playbook flock git python3 sudo tar; do
+for required_command in ansible-inventory ansible-playbook awk flock git python3 sed sha256sum sudo tar; do
   require_command "$required_command"
 done
 
