@@ -220,6 +220,11 @@ inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
 export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
 bash "$repo_root/scripts/assert-ansible-hosts.sh" "$inventory_file"
 
+become_args=()
+if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
+  become_args+=(--ask-become-pass)
+fi
+
 ansible-playbook -i "$inventory_file" \
   "$repo_root/ansible/playbooks/read-accepted-record.yml" \
   -e "stack_name=$stack" \
@@ -243,10 +248,6 @@ fi
 
 contract_hash="$(sha256sum "$stack_contract" | awk '{print $1}')"
 manifest_hash="$(sha256sum "$stack_dir/MANIFEST.tsv" | awk '{print $1}')"
-
-if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
-  become_args+=(--ask-become-pass)
-fi
 
 ansible-playbook -i "$inventory_file" \
   "$repo_root/ansible/playbooks/preflight.yml" \
