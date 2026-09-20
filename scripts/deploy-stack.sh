@@ -327,6 +327,7 @@ deploy_args=(
   -e "homelab_manifest_hash=$manifest_hash"
   -e "homelab_previous_accepted_commit=$previous_accepted_commit"
   -e "homelab_previous_record_id=$previous_record_id"
+  -e "homelab_previous_record_source=$transaction_root/previous.record"
   -e "homelab_previous_release_root=$previous_release_root"
   -e "homelab_repo_root=$repo_root"
   -e "homelab_release_root=$release_root"
