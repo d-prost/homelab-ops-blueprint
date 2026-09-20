@@ -130,6 +130,8 @@
       }}
     stack_current_managed_dests: "{{ stack_managed_files | map(attribute='dest') | list }}"
     stack_unresolved_marker: "{{ homelab_transaction_state_dir }}/{{ stack_name }}.unresolved"
+    stack_prepared_marker_source: >-
+      {{ homelab_transaction_state_dir }}/{{ stack_name }}.{{ homelab_transaction_id }}.prepared
     stack_mutation_started: false
     stack_runtime_verified: false
 
@@ -150,6 +152,40 @@
     owner: root
     group: root
     mode: "0750"
+  when: not ansible_check_mode
+
+- name: Stage prepared transaction marker before target-side staging
+  ansible.builtin.copy:
+    dest: "{{ stack_prepared_marker_source }}"
+    owner: root
+    group: root
+    mode: "0600"
+    backup: false
+    content: |
+      transaction_id={{ homelab_transaction_id }}
+      stack={{ stack_name }}
+      candidate_commit={{ homelab_release_commit }}
+      previous_accepted_commit={{ homelab_previous_accepted_commit }}
+      previous_record_id={{ homelab_previous_record_id }}
+      phase=PREPARED
+  when: not ansible_check_mode
+
+- name: Commit prepared transaction marker durably
+  ansible.builtin.script:
+    cmd: >-
+      {{ homelab_repo_root }}/scripts/durable-state-file.py
+      commit
+      --source {{ stack_prepared_marker_source }}
+      --destination {{ stack_unresolved_marker }}
+      --mode 0600
+    executable: /usr/bin/python3
+  changed_when: true
+  when: not ansible_check_mode
+
+- name: Remove prepared marker staging file
+  ansible.builtin.file:
+    path: "{{ stack_prepared_marker_source }}"
+    state: absent
   when: not ansible_check_mode
 
 - name: Validate and deploy candidate transaction
