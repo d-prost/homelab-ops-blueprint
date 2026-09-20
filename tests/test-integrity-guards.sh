@@ -28,6 +28,14 @@ grep -q 'durable-state-file.py' "$repo_root/ansible/roles/managed_stack/tasks/ma
 grep -q 'Commit acceptance record atomically and durably' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'ACCEPTANCE_PERSISTENCE_FAILED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'automatic rollback is intentionally not attempted' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'phase=PREPARED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'phase=MUTATING' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'phase=RESTORING' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'phase=ACCEPTANCE_PENDING' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'previous.record' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'acceptance.receipt' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'classify-transaction-state.py' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'reconcile-interrupted.yml' "$repo_root/scripts/deploy-stack.sh"
 if grep -q 'VERIFIED_BUT_NOT_RECORDED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"; then
   printf 'FAIL: acceptance persistence must not create a stable verified-but-unrecorded state.\n' >&2
   exit 1
