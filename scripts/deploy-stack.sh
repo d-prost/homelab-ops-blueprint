@@ -84,74 +84,21 @@ if [[ "$inventory" == "lab" ]]; then
   }
 fi
 
-if [[ "$git_ref" != "HEAD" ]] && ! git check-ref-format --branch "$git_ref" >/dev/null 2>&1; then
-  printf 'ERROR: unsafe or invalid Git ref: %s\n' "$git_ref" >&2
-  exit 2
-fi
-
-# Current main is always the trusted control plane. Historical refs provide
-# stack payload only; old inventories, roles and helper scripts are never run.
+# Recovery must not depend on origin availability after PREPARED. For
+# Production, require a clean local main control plane before touching durable
+# transaction state; origin freshness is checked only after interruption state
+# has been resolved.
 if ((production_operation == 1)); then
   [[ -z "$(git status --porcelain --untracked-files=all)" ]] || {
-    printf 'ERROR: refusing Production operation from a dirty working tree.\n' >&2
+    printf 'ERROR: refusing Production recovery/deployment from a dirty working tree.\n' >&2
     exit 1
   }
   [[ "$(git branch --show-current)" == "main" ]] || {
-    printf 'ERROR: Production operations must use the current main control plane.\n' >&2
-    exit 1
-  }
-  git fetch --quiet origin main
-  [[ "$(git rev-parse 'HEAD^{commit}')" == "$(git rev-parse 'origin/main^{commit}')" ]] || {
-    printf 'ERROR: local main control plane is not exactly origin/main.\n' >&2
+    printf 'ERROR: Production recovery/deployment must use the current main control plane.\n' >&2
     exit 1
   }
 fi
 
-if [[ "$git_ref" == "HEAD" ]]; then
-  [[ -z "$(git status --porcelain --untracked-files=all)" ]] || {
-    printf 'ERROR: refusing to deploy HEAD from a dirty working tree.\n' >&2
-    exit 1
-  }
-elif ((production_operation == 1)) && [[ ! "$git_ref" =~ ^release-[0-9]{8}-[0-9]{6}Z$ ]]; then
-  printf 'ERROR: Production --ref accepts only an exact verified release tag.\n' >&2
-  exit 1
-fi
-
-if ((production_operation == 1)) && [[ "$git_ref" != "HEAD" ]]; then
-  git show-ref --verify --quiet "refs/tags/$git_ref" || {
-    printf 'ERROR: Production ref is not a local tag: %s\n' "$git_ref" >&2
-    exit 1
-  }
-  [[ "$(git cat-file -t "refs/tags/$git_ref")" == "tag" ]] || {
-    printf 'ERROR: Production rollback requires an annotated tag.\n' >&2
-    exit 1
-  }
-  release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
-
-  remote_tag_record="$(git ls-remote --tags origin "refs/tags/$git_ref^{}")"
-  [[ -n "$remote_tag_record" ]] || {
-    printf 'ERROR: release tag is not published on origin: %s\n' "$git_ref" >&2
-    exit 1
-  }
-  read -r remote_release_commit _ <<<"$remote_tag_record"
-  [[ "$remote_release_commit" == "$release_commit" ]] || {
-    printf 'ERROR: local release tag does not match origin: %s\n' "$git_ref" >&2
-    exit 1
-  }
-  if ! git merge-base --is-ancestor "$release_commit" origin/main; then
-    printf 'ERROR: release commit is not part of origin/main history: %s\n' "$git_ref" >&2
-    exit 1
-  fi
-fi
-
-tooling_commit="$(git rev-parse 'HEAD^{commit}')"
-if [[ "$git_ref" == "HEAD" ]]; then
-  release_commit="$tooling_commit"
-elif ((production_operation == 1)); then
-  release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
-else
-  git cat-file -e "${git_ref}^{commit}"
-  release_commit="$(git rev-parse "${git_ref}^{commit}")"
 fi
 
 operation_root="$(mktemp -d /tmp/homelab-ops-operation.XXXXXXXX)"
@@ -273,6 +220,77 @@ case "$interrupted_action" in
     exit 1
     ;;
 esac
+
+# Only after durable interruption state is resolved do we authorize and freeze
+# a new candidate. This preserves post-PREPARED recovery independence from
+# origin, branches and newly resolved Git references.
+if [[ "$git_ref" != "HEAD" ]] && ! git check-ref-format --branch "$git_ref" >/dev/null 2>&1; then
+  printf 'ERROR: unsafe or invalid Git ref: %s\n' "$git_ref" >&2
+  exit 2
+fi
+
+if ((production_operation == 1)); then
+  [[ -z "$(git status --porcelain --untracked-files=all)" ]] || {
+    printf 'ERROR: refusing Production operation from a dirty working tree.\n' >&2
+    exit 1
+  }
+  [[ "$(git branch --show-current)" == "main" ]] || {
+    printf 'ERROR: Production operations must use the current main control plane.\n' >&2
+    exit 1
+  }
+  git fetch --quiet origin main
+  [[ "$(git rev-parse 'HEAD^{commit}')" == "$(git rev-parse 'origin/main^{commit}')" ]] || {
+    printf 'ERROR: local main control plane is not exactly origin/main.\n' >&2
+    exit 1
+  }
+fi
+
+if [[ "$git_ref" == "HEAD" ]]; then
+  [[ -z "$(git status --porcelain --untracked-files=all)" ]] || {
+    printf 'ERROR: refusing to deploy HEAD from a dirty working tree.\n' >&2
+    exit 1
+  }
+elif ((production_operation == 1)) && [[ ! "$git_ref" =~ ^release-[0-9]{8}-[0-9]{6}Z$ ]]; then
+  printf 'ERROR: Production --ref accepts only an exact verified release tag.\n' >&2
+  exit 1
+fi
+
+if ((production_operation == 1)) && [[ "$git_ref" != "HEAD" ]]; then
+  git show-ref --verify --quiet "refs/tags/$git_ref" || {
+    printf 'ERROR: Production ref is not a local tag: %s\n' "$git_ref" >&2
+    exit 1
+  }
+  [[ "$(git cat-file -t "refs/tags/$git_ref")" == "tag" ]] || {
+    printf 'ERROR: Production rollback requires an annotated tag.\n' >&2
+    exit 1
+  }
+  release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
+
+  remote_tag_record="$(git ls-remote --tags origin "refs/tags/$git_ref^{}")"
+  [[ -n "$remote_tag_record" ]] || {
+    printf 'ERROR: release tag is not published on origin: %s\n' "$git_ref" >&2
+    exit 1
+  }
+  read -r remote_release_commit _ <<<"$remote_tag_record"
+  [[ "$remote_release_commit" == "$release_commit" ]] || {
+    printf 'ERROR: local release tag does not match origin: %s\n' "$git_ref" >&2
+    exit 1
+  }
+  if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+    printf 'ERROR: release commit is not part of origin/main history: %s\n' "$git_ref" >&2
+    exit 1
+  fi
+fi
+
+tooling_commit="$(git rev-parse 'HEAD^{commit}')"
+if [[ "$git_ref" == "HEAD" ]]; then
+  release_commit="$tooling_commit"
+elif ((production_operation == 1)); then
+  release_commit="$(git rev-parse "refs/tags/$git_ref^{commit}")"
+else
+  git cat-file -e "${git_ref}^{commit}"
+  release_commit="$(git rev-parse "${git_ref}^{commit}")"
+fi
 
 transaction_id="$(python3 - <<'PY'
 import uuid
