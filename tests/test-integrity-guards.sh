@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
-grep -q 'check_mode: false' "$repo_root/ansible/playbooks/deploy-stack.yml"
+grep -q 'check_mode: false' "$repo_root/ansible/tasks/verify-target-identity.yml"
 grep -q 'check_mode: false' "$repo_root/ansible/playbooks/preflight.yml"
 grep -Eq '^host_key_checking[[:space:]]*=[[:space:]]*True[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
 grep -Eq '^roles_path[[:space:]]*=[[:space:]]*\./roles[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
