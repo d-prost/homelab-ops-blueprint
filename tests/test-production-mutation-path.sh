@@ -38,13 +38,15 @@ grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$managed_role" || fail 'record pers
 grep -Fq -- 'automatic rollback is intentionally not attempted' "$managed_role" || fail 'acceptance persistence failure must not auto-rollback'
 prepared_marker_line="$(grep -nF 'Commit prepared transaction marker durably' "$managed_role" | head -n1 | cut -d: -f1)"
 marker_commit_line="$(grep -nF 'Commit unresolved transaction marker durably before mutation' "$managed_role" | head -n1 | cut -d: -f1)"
+target_dir_line="$(grep -nF 'Create exact target directory' "$managed_role" | head -n1 | cut -d: -f1)"
 managed_install_line="$(grep -nF 'Install allowlisted managed files atomically' "$managed_role" | head -n1 | cut -d: -f1)"
 runtime_verify_line="$(grep -nF 'Run functional stack verification on the target' "$managed_role" | head -n1 | cut -d: -f1)"
 acceptance_commit_line="$(grep -nF 'Commit acceptance record atomically and durably' "$managed_role" | head -n1 | cut -d: -f1)"
 accepted_report_line="$(grep -nF 'Report durable acceptance' "$managed_role" | head -n1 | cut -d: -f1)"
-[[ -n "$prepared_marker_line" && -n "$marker_commit_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
+[[ -n "$prepared_marker_line" && -n "$marker_commit_line" && -n "$target_dir_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
 ((prepared_marker_line < marker_commit_line)) || fail 'PREPARED marker must exist before mutation phase'
-((marker_commit_line < managed_install_line)) || fail 'MUTATING marker must precede managed mutation'
+((marker_commit_line < target_dir_line)) || fail 'MUTATING marker must precede the first managed target mutation'
+((target_dir_line < managed_install_line)) || fail 'target boundary setup must precede managed file installation'
 ((managed_install_line < runtime_verify_line)) || fail 'functional verification must follow managed mutation'
 ((runtime_verify_line < acceptance_commit_line)) || fail 'acceptance record must be committed only after runtime verification'
 ((acceptance_commit_line < accepted_report_line)) || fail 'ACCEPTED must be reported only after durable record commit'
