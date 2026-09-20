@@ -99,6 +99,12 @@ bash scripts/deploy-stack.sh dozzle
 
 The Production entry point expects a clean `main` that matches `origin/main`.
 
+Transactions for the same declared target and stack are serialized through a
+host-global lock on the configured control host. The lock is shared across
+operator users and runtime environments on that host. v1 does not provide a
+distributed lock across multiple independent control hosts; use one configured
+control host for a given target/stack transaction boundary.
+
 ## What happens during a deployment
 
 Before Production is changed, the deployment path verifies that:
@@ -183,13 +189,14 @@ The main local commands are:
 
 ```bash
 make validate     # syntax, contracts, tests and repository checks
-make lab-proof    # disposable deployment, injected failure and rollback test
-make ci           # CI-oriented validation including Gitleaks when available
+make lab-proof            # disposable deployment, injected failure and rollback test
+make idempotency-proof    # redeploy the same accepted candidate and prove zero managed-file changes
+make ci                   # CI-oriented validation including Gitleaks when available
 ```
 
 Local validation does not require the optional lint/security tools. CI installs ShellCheck, yamllint and Gitleaks and runs the stricter checks automatically.
 
-GitHub Actions runs static validation and a disposable rollback test. The rollback workflow deploys the Dozzle example, introduces a failure, restores the previous configuration and verifies the service again.
+GitHub Actions runs static validation, a disposable rollback proof and a separate disposable idempotency proof. The rollback workflow deploys the Dozzle example, introduces a failure, restores the previous configuration and verifies the service again. The idempotency workflow deploys the same accepted candidate twice, proves the managed configuration files are unchanged on the second transaction, and still requires functional runtime verification.
 
 For a short reviewer/adopter path that does not touch an existing Production environment, see [`docs/EVALUATION.md`](docs/EVALUATION.md).
 

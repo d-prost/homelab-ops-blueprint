@@ -12,11 +12,20 @@ fail() {
   exit 1
 }
 
-lock_call="flock -n \"\$deployment_lock_fd\""
 rollback_exec="exec bash \"\$script_dir/deploy-stack.sh\" \"\$1\" --ref \"\$2\""
 
-grep -Fq -- 'homelab-ops-deploy.lock' "$deploy" || fail 'deploy path must use the shared deployment lock'
-grep -Fq -- "$lock_call" "$deploy" || fail 'deployment lock must fail closed instead of waiting or running concurrently'
+grep -Fq -- 'target-lock-key.py' "$deploy" || fail 'deployment must derive a stable declared-target lock key'
+grep -Fq -- '/run/lock/homelab-ops-' "$deploy" || fail 'deployment lock must live in the host-global lock namespace'
+grep -Fq -- 'lock-utils.sh' "$deploy" || fail 'deployment must use the shared host-global lock primitive'
+grep -Fq -- 'homelab_acquire_global_lock' "$deploy" || fail 'deployment must acquire the host-global target/stack lock'
+grep -Fq -- 'PRE_MUTATION_REFUSAL: another transaction already holds the target/stack lock' "$deploy" || fail 'lock contention must refuse before mutation'
+if grep -Fq -- 'XDG_RUNTIME_DIR' "$deploy"; then
+  fail 'Production serialization must not depend on a user-specific runtime directory'
+fi
+lock_line="$(grep -nF 'homelab_acquire_global_lock' "$deploy" | head -n1 | cut -d: -f1)"
+preflight_line="$(grep -nF 'ansible/playbooks/preflight.yml' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$lock_line" && -n "$preflight_line" ]] || fail 'unable to locate lock and target preflight boundaries'
+((lock_line < preflight_line)) || fail 'target/stack lock must be acquired before remote preflight'
 grep -Fq -- "$rollback_exec" "$rollback" || fail 'explicit rollback must reuse the guarded deployment path'
 grep -Fq -- 'check-recovery-readiness.py' "$deploy" || fail 'Production deployment must invoke the recovery readiness gate'
 grep -Fq -- 'ANSIBLE_HOST_KEY_CHECKING=True' "$deploy" || fail 'Production wrapper must force Ansible host-key checking on'

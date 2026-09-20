@@ -7,6 +7,14 @@ grep -q 'check_mode: false' "$repo_root/ansible/playbooks/preflight.yml"
 grep -Eq '^host_key_checking[[:space:]]*=[[:space:]]*True[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
 grep -Eq '^roles_path[[:space:]]*=[[:space:]]*\./roles[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
 grep -q 'ANSIBLE_HOST_KEY_CHECKING=True' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'target-lock-key.py' "$repo_root/scripts/deploy-stack.sh"
+grep -q '/run/lock/homelab-ops-' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'homelab_acquire_global_lock' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'flock -n' "$repo_root/scripts/lock-utils.sh"
+if grep -q 'XDG_RUNTIME_DIR' "$repo_root/scripts/deploy-stack.sh"; then
+  printf 'FAIL: deploy lock must not use a user-specific runtime directory.\n' >&2
+  exit 1
+fi
 grep -q 'validate-target-inventory.py' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'verify-target-identity.yml' "$repo_root/ansible/playbooks/preflight.yml"
 grep -q 'verify-target-identity.yml' "$repo_root/ansible/playbooks/deploy-stack.yml"

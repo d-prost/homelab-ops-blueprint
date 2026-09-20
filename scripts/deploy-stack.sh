@@ -89,17 +89,6 @@ if [[ "$git_ref" != "HEAD" ]] && ! git check-ref-format --branch "$git_ref" >/de
   exit 2
 fi
 
-runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-[[ -d "$runtime_dir" && "$(stat -c %u "$runtime_dir")" == "$(id -u)" ]] || {
-  printf 'ERROR: a private operator runtime directory is required: %s\n' "$runtime_dir" >&2
-  exit 1
-}
-exec {deployment_lock_fd}>"$runtime_dir/homelab-ops-deploy.lock"
-if ! flock -n "$deployment_lock_fd"; then
-  printf 'ERROR: another HomeLab deployment is already running.\n' >&2
-  exit 1
-fi
-
 # Current main is always the trusted control plane. Historical refs provide
 # stack payload only; old inventories, roles and helper scripts are never run.
 if ((production_operation == 1)); then
@@ -226,6 +215,22 @@ bash "$repo_root/scripts/assert-ansible-hosts.sh" "$inventory_file"
 if ((production_operation == 1)); then
   python3 "$repo_root/scripts/validate-target-inventory.py" \
     "$inventory_file" --environment production
+fi
+
+target_lock_key="$(python3 "$repo_root/scripts/target-lock-key.py" "$inventory_file")"
+lock_file="/run/lock/homelab-ops-${target_lock_key}-${stack}.lock"
+# shellcheck source=scripts/lock-utils.sh
+source "$repo_root/scripts/lock-utils.sh"
+if homelab_acquire_global_lock "$lock_file"; then
+  :
+else
+  lock_rc=$?
+  if ((lock_rc == 75)); then
+    printf 'ERROR: PRE_MUTATION_REFUSAL: another transaction already holds the target/stack lock: %s\n' "$lock_file" >&2
+  else
+    printf 'ERROR: PRE_MUTATION_REFUSAL: host-global lock cannot be established: %s\n' "$lock_file" >&2
+  fi
+  exit 1
 fi
 
 become_args=()
