@@ -30,7 +30,10 @@ paths=("$@")
 }
 
 git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null
-git -C "$repo_root" cat-file -e "${commit}^{commit}"
+if ! git -C "$repo_root" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+  printf 'ERROR: Git commit is unavailable for snapshot materialization: %s\n' "$commit" >&2
+  exit 1
+fi
 resolved_commit="$(git -C "$repo_root" rev-parse "${commit}^{commit}")"
 
 for path in "${paths[@]}"; do
