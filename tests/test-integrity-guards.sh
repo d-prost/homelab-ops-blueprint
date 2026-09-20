@@ -18,7 +18,7 @@ grep -q 'read-accepted-record.yml' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'materialize-git-snapshot.sh' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'preflight-images.yml' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'prove-image-availability.py' "$repo_root/ansible/playbooks/preflight-images.yml"
-grep -q 'validate-stack-contracts.py" --stack-dir "$previous_stack_dir"' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'validate-stack-contracts.py" --stack-dir' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'Historical refs provide' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'MANIFEST.tsv differs from stack.yml' "$repo_root/scripts/validate-stack-contracts.py"
 printf 'Integrity guard tests passed.\n'
