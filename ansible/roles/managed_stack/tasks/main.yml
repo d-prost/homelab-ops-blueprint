@@ -677,9 +677,9 @@
     - name: Refuse an unprotected deployment failure
       ansible.builtin.fail:
         msg: >-
-          Deployment failed before a complete prior managed file set and its
-          exact Git contract were available. No verified automatic rollback
-          target exists. Original failure:
+          REJECTED_ROLLBACK_FAILED: candidate deployment failed after managed
+          mutation, but no verified automatic rollback target exists. The
+          target remains unresolved. Original failure:
           {{ ansible_failed_result.msg | default(ansible_failed_result) }}
       when: not (stack_rollback_available | default(false) | bool)
 
