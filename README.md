@@ -81,7 +81,9 @@ cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-Edit `hosts.yml` and replace the example values with the real target settings.
+Edit `hosts.yml` and replace the example values with the real SSH target settings. Production uses strict OpenSSH host-key verification; add the trusted target key to the operator's normal `known_hosts` file before running the deployment. Unknown or changed host keys are refused.
+
+The hostname is mandatory. `homelab_expected_machine_id` is optional and may remain `null`; when set, the target's `/etc/machine-id` must also match before mutation.
 
 Preview the deployment:
 
@@ -102,7 +104,9 @@ The Production entry point expects a clean `main` that matches `origin/main`.
 Before Production is changed, the deployment path verifies that:
 
 - the local checkout is a clean, up-to-date `main`;
+- the Production transport is SSH with host-key checking enabled;
 - the selected inventory host matches the target hostname;
+- the optional pinned `/etc/machine-id` matches when configured;
 - the exact selected stack payload passes the current contract validator;
 - each stack declares the files it manages and the services it expects;
 - `MANIFEST.tsv` matches the source-to-target file mapping;
