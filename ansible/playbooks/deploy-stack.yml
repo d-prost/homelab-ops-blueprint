@@ -28,6 +28,8 @@
           - homelab_previous_accepted_commit == '' or homelab_previous_accepted_commit is match('^[0-9a-f]{40}$')
           - homelab_previous_record_id is defined
           - homelab_previous_record_id == '' or homelab_previous_record_id is match('^[0-9a-f]{64}$')
+          - homelab_previous_record_source is defined
+          - homelab_previous_record_source == '' or homelab_previous_record_source is match('^/.+')
           - homelab_previous_release_root is defined
           - homelab_previous_release_root == '' or homelab_previous_release_root is match('^/.+')
           - homelab_repo_root is defined

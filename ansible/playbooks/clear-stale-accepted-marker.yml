@@ -1,0 +1,98 @@
+---
+- name: Clear a stale marker only after durable acceptance proof
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+  vars:
+    stale_candidate_dir: >-
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_interrupted_transaction_id }}
+    stale_rollback_dir: >-
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_interrupted_transaction_id }}-rollback
+    stale_marker: "{{ homelab_transaction_state_dir }}/{{ stack_name }}.unresolved"
+
+  pre_tasks:
+    - name: Require exact durable acceptance proof metadata
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name is match('^[a-z0-9][a-z0-9-]*$')
+          - homelab_interrupted_transaction_id is defined
+          - homelab_interrupted_transaction_id is match('^[A-Za-z0-9._:-]+$')
+          - homelab_expected_record_hash is defined
+          - homelab_expected_record_hash is match('^[0-9a-f]{64}$')
+          - homelab_repo_root is defined
+          - homelab_repo_root is match('^/.+')
+        fail_msg: "INTERRUPTED_UNRESOLVED: exact stale-marker proof is required."
+
+    - name: Verify target identity before stale-marker cleanup
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/verify-target-identity.yml"
+
+  tasks:
+    - name: Read durable accepted record
+      ansible.builtin.slurp:
+        src: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+      register: stale_record
+      changed_when: false
+      check_mode: false
+
+    - name: Read durable acceptance receipt
+      ansible.builtin.slurp:
+        src: "{{ homelab_deployment_record_dir }}/{{ stack_name }}.receipt"
+      register: stale_receipt
+      changed_when: false
+      check_mode: false
+
+    - name: Hash durable accepted record
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sha256sum
+          - "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+      register: stale_record_hash
+      changed_when: false
+      check_mode: false
+
+    - name: Prove marker transaction was durably accepted
+      ansible.builtin.assert:
+        that:
+          - stale_record_hash.stdout.split()[0] == homelab_expected_record_hash
+          - >-
+            ('transaction_id=' ~ homelab_interrupted_transaction_id)
+            in ((stale_record.content | b64decode).splitlines())
+          - >-
+            ('transaction_id=' ~ homelab_interrupted_transaction_id)
+            in ((stale_receipt.content | b64decode).splitlines())
+          - >-
+            ('record_sha256=' ~ homelab_expected_record_hash)
+            in ((stale_receipt.content | b64decode).splitlines())
+        fail_msg: >-
+          INTERRUPTED_UNRESOLVED: stale marker cannot be cleared because durable
+          acceptance of the matching transaction was not proven.
+
+    - name: Clear stale unresolved marker durably
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          remove
+          --path {{ stale_marker }}
+        executable: /usr/bin/python3
+      changed_when: true
+
+    - name: Remove stale candidate directory
+      ansible.builtin.file:
+        path: "{{ stale_candidate_dir }}"
+        state: absent
+
+    - name: Remove stale rollback directory
+      ansible.builtin.file:
+        path: "{{ stale_rollback_dir }}"
+        state: absent
+
+    - name: Report stale accepted marker cleanup
+      ansible.builtin.debug:
+        msg: >-
+          ACCEPTED: durable receipt and record prove transaction
+          {{ homelab_interrupted_transaction_id }} was accepted; stale marker
+          cleared without rollback.

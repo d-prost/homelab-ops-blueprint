@@ -119,3 +119,81 @@ jobs:
         env:
           HOMELAB_LAB_ACCEPTANCE_FAILURE_TEST: "1"
         run: bash tests/test-lab-acceptance-persistence.sh
+
+  interruption-proof:
+    name: Interruption recovery proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install runtime test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ansible-core python3-yaml
+
+      - name: Verify Docker availability
+        run: |
+          docker version
+          docker compose version
+
+      - name: Prove interruption recovery
+        env:
+          HOMELAB_LAB_INTERRUPTION_TEST: "1"
+        run: bash tests/test-lab-interruption-recovery.sh
+
+  stale-acceptance-marker-proof:
+    name: Stale accepted marker proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install runtime test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ansible-core python3-yaml
+
+      - name: Verify Docker availability
+        run: |
+          docker version
+          docker compose version
+
+      - name: Prove stale accepted marker cleanup
+        env:
+          HOMELAB_LAB_STALE_MARKER_PROOF: "1"
+        run: bash tests/test-lab-stale-accepted-marker.sh
+
+  ssh-interruption-proof:
+    name: SSH session interruption proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install runtime and SSH test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ansible-core openssh-server python3-yaml
+
+      - name: Verify Docker availability
+        run: |
+          docker version
+          docker compose version
+
+      - name: Prove SSH session interruption recovery
+        env:
+          HOMELAB_SSH_INTERRUPTION_TEST: "1"
+        run: bash tests/test-ssh-session-interruption.sh

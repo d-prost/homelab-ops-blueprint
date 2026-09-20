@@ -36,16 +36,23 @@ grep -Fq -- 'stack_runtime_verified: true' "$managed_role" || fail 'runtime PASS
 grep -Fq -- 'Commit acceptance record atomically and durably' "$managed_role" || fail 'acceptance must use the durable atomic commit helper'
 grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$managed_role" || fail 'record persistence failure must have an explicit terminal result'
 grep -Fq -- 'automatic rollback is intentionally not attempted' "$managed_role" || fail 'acceptance persistence failure must not auto-rollback'
+prepared_marker_line="$(grep -nF 'Commit prepared transaction marker durably' "$managed_role" | head -n1 | cut -d: -f1)"
 marker_commit_line="$(grep -nF 'Commit unresolved transaction marker durably before mutation' "$managed_role" | head -n1 | cut -d: -f1)"
+target_dir_line="$(grep -nF 'Create exact target directory' "$managed_role" | head -n1 | cut -d: -f1)"
 managed_install_line="$(grep -nF 'Install allowlisted managed files atomically' "$managed_role" | head -n1 | cut -d: -f1)"
 runtime_verify_line="$(grep -nF 'Run functional stack verification on the target' "$managed_role" | head -n1 | cut -d: -f1)"
 acceptance_commit_line="$(grep -nF 'Commit acceptance record atomically and durably' "$managed_role" | head -n1 | cut -d: -f1)"
 accepted_report_line="$(grep -nF 'Report durable acceptance' "$managed_role" | head -n1 | cut -d: -f1)"
-[[ -n "$marker_commit_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
-((marker_commit_line < managed_install_line)) || fail 'durable unresolved marker must precede managed mutation'
+[[ -n "$prepared_marker_line" && -n "$marker_commit_line" && -n "$target_dir_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
+((prepared_marker_line < marker_commit_line)) || fail 'PREPARED marker must exist before mutation phase'
+((marker_commit_line < target_dir_line)) || fail 'MUTATING marker must precede the first managed target mutation'
+((target_dir_line < managed_install_line)) || fail 'target boundary setup must precede managed file installation'
 ((managed_install_line < runtime_verify_line)) || fail 'functional verification must follow managed mutation'
 ((runtime_verify_line < acceptance_commit_line)) || fail 'acceptance record must be committed only after runtime verification'
 ((acceptance_commit_line < accepted_report_line)) || fail 'ACCEPTED must be reported only after durable record commit'
+grep -Fq -- 'stack_acceptance_committed: true' "$managed_role" || fail 'durable acceptance must become irreversible before auxiliary receipt work'
+grep -Fq -- 'stack_transaction_resolved: true' "$managed_role" || fail 'resolved transactions must be marked before recovery material cleanup'
+grep -Fq -- 'Remove exact candidate directory only when transaction is resolved' "$managed_role" || fail 'unresolved recovery material must survive rescue failure'
 grep -Fq -- '--current-contract' "$deploy" || fail 'historical payloads must be checked against current stateful classification'
 grep -Fq -- '--forbid-evidence-under' "$deploy" || fail 'private readiness evidence must stay outside the public repository tree'
 grep -Fq -- 'HOMELAB_RECOVERY_EVIDENCE' "$deploy" || fail 'Production stateful readiness must consume private evidence'
@@ -62,6 +69,19 @@ artifact_preflight_line="$(grep -nF 'preflight-images.yml' "$deploy" | head -n1 
 managed_deploy_line="$(grep -nF 'deploy_args=(' "$deploy" | head -n1 | cut -d: -f1)"
 [[ -n "$artifact_preflight_line" && -n "$managed_deploy_line" ]] || fail 'unable to locate artifact preflight and managed deploy boundaries'
 ((artifact_preflight_line < managed_deploy_line)) || fail 'runtime artifact preflight must occur before managed deployment begins'
+grep -Fq -- 'inspect-transaction-state.yml' "$deploy" || fail 'deployment must inspect unresolved state before candidate preparation'
+grep -Fq -- 'classify-transaction-state.py' "$deploy" || fail 'deployment must classify durable interruption state'
+grep -Fq -- 'reconcile-interrupted.yml' "$deploy" || fail 'MUTATING/RESTORING interruptions must use verified restoration'
+grep -Fq -- 'clear-stale-accepted-marker.yml' "$deploy" || fail 'stale accepted marker cleanup must require durable acceptance proof'
+grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$repo_root/scripts/classify-transaction-state.py" || fail 'acceptance persistence failure must remain a classifier-visible manual state'
+grep -Fq -- 'cleanup-prepared-interruption.yml' "$deploy" || fail 'PREPARED interruption must clean without rollback'
+inspect_line="$(grep -nF 'inspect-transaction-state.yml' "$deploy" | head -n1 | cut -d: -f1)"
+candidate_freeze_line="$(grep -nF 'materialize-git-snapshot.sh' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$inspect_line" && -n "$candidate_freeze_line" ]] || fail 'unable to locate interruption inspection and candidate freeze'
+((inspect_line < candidate_freeze_line)) || fail 'unresolved state must be reconciled before a new candidate is frozen'
+origin_fetch_line="$(grep -nF 'git fetch --quiet origin main' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$origin_fetch_line" ]] || fail 'Production candidate authorization must still verify origin/main'
+((inspect_line < origin_fetch_line)) || fail 'interruption recovery must not depend on origin availability after PREPARED'
 grep -Fq -- 'read-accepted-record.yml' "$deploy" || fail 'deployment must resolve previous accepted state before mutation'
 grep -Fq -- 'homelab_tooling_commit' "$deploy" || fail 'deployment must carry an independent tooling commit'
 grep -Fq -- 'homelab_previous_release_root' "$deploy" || fail 'deployment must pass a frozen previous accepted payload'

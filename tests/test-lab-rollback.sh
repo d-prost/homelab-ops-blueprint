@@ -3,9 +3,9 @@ set -Eeuo pipefail
 [[ "${HOMELAB_LAB_ROLLBACK_TEST:-0}" == "1" ]] || { printf 'ERROR: set HOMELAB_LAB_ROLLBACK_TEST=1.\n' >&2; exit 1; }
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"; cd "$repo_root"
 actual_hostname="$(hostname)"; export HOMELAB_LAB_HOSTNAME="$actual_hostname"
-target_dir="/opt/homelab-ops/stacks/dozzle"; record_file="/etc/homelab-ops/deployments/dozzle.record"; tmp_root="$(mktemp -d)"; runtime_dir="$tmp_root/runtime"; failure_log="$tmp_root/failed-deploy.log"
+target_dir="/opt/homelab-ops/stacks/dozzle"; record_file="/etc/homelab-ops/deployments/dozzle.record"; receipt_file="/etc/homelab-ops/deployments/dozzle.receipt"; marker_file="/var/lib/homelab-ops/transactions/dozzle.unresolved"; tmp_root="$(mktemp -d)"; runtime_dir="$tmp_root/runtime"; failure_log="$tmp_root/failed-deploy.log"
 [[ ! -e "$target_dir" ]] || { printf 'ERROR: disposable Lab target already exists: %s\n' "$target_dir" >&2; exit 1; }
-cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/defaults.env" ]]; then sudo /usr/bin/docker compose --env-file "$target_dir/defaults.env" -f "$target_dir/docker-compose.yml" down --remove-orphans >/dev/null 2>&1; fi; sudo rm -rf -- "$target_dir"; sudo rm -f -- "$record_file"; rm -rf -- "$tmp_root"; }; trap cleanup EXIT
+cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/defaults.env" ]]; then sudo /usr/bin/docker compose --env-file "$target_dir/defaults.env" -f "$target_dir/docker-compose.yml" down --remove-orphans >/dev/null 2>&1; fi; sudo rm -rf -- "$target_dir"; sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"; rm -rf -- "$tmp_root"; }; trap cleanup EXIT
 mkdir -p "$runtime_dir"; chmod 0700 "$runtime_dir"
 export XDG_RUNTIME_DIR="$runtime_dir"; export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
 bash scripts/deploy-stack.sh dozzle --inventory lab
@@ -18,10 +18,11 @@ path=Path(sys.argv[1]); model=yaml.safe_load(path.read_text()); model['services'
 PY_INNER
 set +e
 previous_commit="$(git rev-parse HEAD)"
-previous_record_id="$(sudo sha256sum "$record_file" | awk '{print $1}')"
+sudo cat "$record_file" | tee "$tmp_root/previous.record" >/dev/null
+previous_record_id="$(sha256sum "$tmp_root/previous.record" | awk '{print $1}')"
 contract_hash="$(sha256sum "$tmp_root/stacks/dozzle/stack.yml" | awk '{print $1}')"
 manifest_hash="$(sha256sum "$tmp_root/stacks/dozzle/MANIFEST.tsv" | awk '{print $1}')"
-ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" ansible-playbook -i "$repo_root/ansible/inventory/lab/hosts.yml" "$repo_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_tooling_commit="$previous_commit" -e homelab_transaction_id=lab-failure-test -e homelab_contract_hash="$contract_hash" -e homelab_manifest_hash="$manifest_hash" -e homelab_previous_accepted_commit="$previous_commit" -e homelab_previous_record_id="$previous_record_id" -e homelab_previous_release_root="$repo_root" -e homelab_repo_root="$repo_root" -e homelab_release_root="$tmp_root" >"$failure_log" 2>&1
+ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" ansible-playbook -i "$repo_root/ansible/inventory/lab/hosts.yml" "$repo_root/ansible/playbooks/deploy-stack.yml" -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_tooling_commit="$previous_commit" -e homelab_transaction_id=lab-failure-test -e homelab_contract_hash="$contract_hash" -e homelab_manifest_hash="$manifest_hash" -e homelab_previous_accepted_commit="$previous_commit" -e homelab_previous_record_id="$previous_record_id" -e homelab_previous_record_source="$tmp_root/previous.record" -e homelab_previous_release_root="$repo_root" -e homelab_repo_root="$repo_root" -e homelab_release_root="$tmp_root" >"$failure_log" 2>&1
 failed_rc=$?; set -e
 ((failed_rc != 0)) || { cat "$failure_log" >&2; exit 1; }
 grep -q 'prior managed files were restored' "$failure_log" || { cat "$failure_log" >&2; exit 1; }

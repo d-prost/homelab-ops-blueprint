@@ -14,6 +14,8 @@ export HOMELAB_LAB_HOSTNAME="$actual_hostname"
 
 target_dir="/opt/homelab-ops/stacks/dozzle"
 record_file="/etc/homelab-ops/deployments/dozzle.record"
+receipt_file="/etc/homelab-ops/deployments/dozzle.receipt"
+marker_file="/var/lib/homelab-ops/transactions/dozzle.unresolved"
 tmp_root="$(mktemp -d)"
 first_log="$tmp_root/first.log"
 second_log="$tmp_root/second.log"
@@ -24,7 +26,7 @@ cleanup() {
     sudo /usr/bin/docker compose       --env-file "$target_dir/defaults.env"       -f "$target_dir/docker-compose.yml"       down --remove-orphans >/dev/null 2>&1
   fi
   sudo rm -rf -- "$target_dir"
-  sudo rm -f -- "$record_file"
+  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
   rm -rf -- "$tmp_root"
 }
 trap cleanup EXIT

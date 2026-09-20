@@ -115,6 +115,26 @@ runtime, the last durable record in `/etc/homelab-ops/deployments/`, and the
 underlying storage/permission failure before removing the marker as an explicit
 operator reconciliation step. Do not remove it merely to bypass the guard.
 
+### Interrupted transaction recovery
+
+The target keeps only a minimal durable transaction marker plus the candidate and
+previous accepted rollback material needed for recovery. It is not a journal and
+does not support resume semantics.
+
+On the next normal invocation:
+
+- `PREPARED` means managed mutation was not crossed, so transient artifacts are
+  cleaned without rollback;
+- `MUTATING` or `RESTORING` restores the frozen previous accepted managed
+  configuration, reapplies Compose and reruns the previous functional checks;
+- `ACCEPTANCE_PENDING` is treated as already accepted only when the durable
+  record and receipt bind the same transaction and record hash;
+- `ACCEPTANCE_PERSISTENCE_FAILED` and any ambiguous/incomplete evidence remain
+  `INTERRUPTED_UNRESOLVED` and require operator reconciliation.
+
+Check Mode does not perform recovery mutations. If unresolved state exists,
+rerun without `--check` to execute the bounded recovery path first.
+
 ## Report an adoption result
 
 Reports from environments outside the repository's own CI are useful because they expose assumptions that a single maintainer's setup may not reveal.
