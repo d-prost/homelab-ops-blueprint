@@ -246,19 +246,61 @@ ansible-playbook -i "$inventory_file" \
   -e "homelab_transaction_root=$transaction_root" \
   "${become_args[@]}"
 
+rollback_images_b64=""
 if [[ -f "$transaction_root/previous.record" ]]; then
   mapfile -t previous_commit_matches < <(
     sed -nE 's/^commit=([0-9a-f]{40})$/\1/p' "$transaction_root/previous.record"
   )
   (("${#previous_commit_matches[@]}" == 1)) || {
-    printf 'ERROR: prior deployment record does not contain exactly one valid commit.\n' >&2
+    printf 'ERROR: PRE_MUTATION_REFUSAL: prior deployment record does not contain exactly one valid commit.\n' >&2
     exit 1
   }
   previous_accepted_commit="${previous_commit_matches[0]}"
   previous_record_id="$(sha256sum "$transaction_root/previous.record" | awk '{print $1}')"
   previous_release_root="$transaction_root/previous"
-  bash "$repo_root/scripts/materialize-git-snapshot.sh" \
-    "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null
+  if ! bash "$repo_root/scripts/materialize-git-snapshot.sh" \
+    "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null; then
+    printf 'ERROR: PRE_MUTATION_REFUSAL: previous accepted Git material is unavailable.\n' >&2
+    exit 1
+  fi
+
+  previous_stack_dir="$previous_release_root/stacks/$stack"
+  python3 "$repo_root/scripts/validate-stack-contracts.py" --stack-dir "$previous_stack_dir" || {
+    printf 'ERROR: PRE_MUTATION_REFUSAL: previous accepted rollback material is invalid.\n' >&2
+    exit 1
+  }
+  if ! rollback_images_b64="$(
+    python3 "$repo_root/scripts/render-stack-images.py" \
+      --stack-dir "$previous_stack_dir" \
+      --docker-path /usr/bin/docker \
+      --base64-json
+  )"; then
+    printf 'ERROR: PRE_MUTATION_REFUSAL: rollback runtime images cannot be resolved.\n' >&2
+    exit 1
+  fi
+fi
+
+if ! candidate_images_b64="$(
+  python3 "$repo_root/scripts/render-stack-images.py" \
+    --stack-dir "$stack_dir" \
+    --docker-path /usr/bin/docker \
+    --base64-json
+)"; then
+  printf 'ERROR: PRE_MUTATION_REFUSAL: candidate runtime images cannot be resolved.\n' >&2
+  exit 1
+fi
+
+if ((check_mode == 0)); then
+  ansible-playbook -i "$inventory_file" \
+    "$repo_root/ansible/playbooks/preflight-images.yml" \
+    -e "stack_name=$stack" \
+    -e "homelab_repo_root=$repo_root" \
+    -e "homelab_candidate_images_b64=$candidate_images_b64" \
+    -e "homelab_rollback_images_b64=$rollback_images_b64" \
+    "${become_args[@]}" || {
+      printf 'ERROR: PRE_MUTATION_REFUSAL: required runtime image is unavailable by digest.\n' >&2
+      exit 1
+    }
 fi
 
 deploy_args=(

@@ -14,6 +14,7 @@ python3 tests/test-stack-contracts.py
 python3 tests/test-functional-check-parsing.py
 python3 tests/test-operational-coverage.py
 python3 tests/test-recovery-readiness.py
+python3 tests/test-rollback-material-preflight.py
 bash tests/test-integrity-guards.sh
 bash tests/test-production-mutation-path.sh
 bash tests/test-transaction-freeze.sh
@@ -23,6 +24,7 @@ if command -v ansible-playbook >/dev/null 2>&1; then
   export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
   HOMELAB_LAB_HOSTNAME=ci-example ansible-playbook -i ansible/inventory/lab/hosts.yml ansible/playbooks/preflight.yml -e stack_name=dozzle -e homelab_repo_root="$repo_root" -e homelab_release_root="$repo_root" --syntax-check
   HOMELAB_LAB_HOSTNAME=ci-example ansible-playbook -i ansible/inventory/lab/hosts.yml ansible/playbooks/read-accepted-record.yml -e stack_name=dozzle -e homelab_transaction_root=/tmp/homelab-transaction-syntax --syntax-check
+  HOMELAB_LAB_HOSTNAME=ci-example ansible-playbook -i ansible/inventory/lab/hosts.yml ansible/playbooks/preflight-images.yml -e stack_name=dozzle -e homelab_repo_root="$repo_root" -e homelab_candidate_images_b64=W119 -e homelab_rollback_images_b64='' --syntax-check
   HOMELAB_LAB_HOSTNAME=ci-example ansible-playbook -i ansible/inventory/lab/hosts.yml ansible/playbooks/deploy-stack.yml -e stack_name=dozzle -e homelab_release_commit=1111111111111111111111111111111111111111 -e homelab_tooling_commit=2222222222222222222222222222222222222222 -e homelab_transaction_id=syntax-check -e homelab_contract_hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -e homelab_manifest_hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -e homelab_previous_accepted_commit='' -e homelab_previous_record_id='' -e homelab_previous_release_root='' -e homelab_repo_root="$repo_root" -e homelab_release_root="$repo_root" --syntax-check
 fi
 if [[ "${HOMELAB_STRICT_VALIDATION:-0}" == "1" ]]; then command -v gitleaks >/dev/null || { echo 'ERROR: gitleaks required in strict mode' >&2; exit 1; }; gitleaks dir . --redact --no-banner --config .gitleaks.toml; fi

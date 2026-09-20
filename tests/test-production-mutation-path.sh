@@ -26,6 +26,15 @@ grep -Fq -- 'HOMELAB_BACKUP_MAX_AGE_SECONDS' "$deploy" || fail 'Production state
 
 grep -Fq -- 'validate-stack-contracts.py' "$deploy" || fail 'selected release payload must use the current contract validator'
 grep -Fq -- 'materialize-git-snapshot.sh' "$deploy" || fail 'deployment must freeze Git payloads before mutation'
+grep -Fq -- 'validate-stack-contracts.py" --stack-dir' "$deploy" || fail 'previous accepted payload must be revalidated before mutation'
+grep -Fq -- 'render-stack-images.py' "$deploy" || fail 'frozen candidate and rollback images must be rendered before mutation'
+grep -Fq -- 'preflight-images.yml' "$deploy" || fail 'runtime image availability must be proven before managed mutation'
+grep -Fq -- 'PRE_MUTATION_REFUSAL: previous accepted Git material is unavailable' "$deploy" || fail 'missing rollback Git material must fail as a pre-mutation refusal'
+grep -Fq -- 'PRE_MUTATION_REFUSAL: required runtime image is unavailable by digest' "$deploy" || fail 'image unavailability must fail as a pre-mutation refusal'
+artifact_preflight_line="$(grep -nF 'preflight-images.yml' "$deploy" | head -n1 | cut -d: -f1)"
+managed_deploy_line="$(grep -nF 'deploy_args=(' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$artifact_preflight_line" && -n "$managed_deploy_line" ]] || fail 'unable to locate artifact preflight and managed deploy boundaries'
+((artifact_preflight_line < managed_deploy_line)) || fail 'runtime artifact preflight must occur before managed deployment begins'
 grep -Fq -- 'read-accepted-record.yml' "$deploy" || fail 'deployment must resolve previous accepted state before mutation'
 grep -Fq -- 'homelab_tooling_commit' "$deploy" || fail 'deployment must carry an independent tooling commit'
 grep -Fq -- 'homelab_previous_release_root' "$deploy" || fail 'deployment must pass a frozen previous accepted payload'
