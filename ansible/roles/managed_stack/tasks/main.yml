@@ -134,6 +134,8 @@
       {{ homelab_transaction_state_dir }}/{{ stack_name }}.{{ homelab_transaction_id }}.prepared
     stack_mutation_started: false
     stack_runtime_verified: false
+    stack_acceptance_committed: false
+    stack_transaction_resolved: false
 
 - name: Determine files introduced only by the candidate release
   ansible.builtin.set_fact:
@@ -527,6 +529,12 @@
       changed_when: true
       when: not ansible_check_mode
 
+    - name: Mark durable acceptance commit point reached
+      ansible.builtin.set_fact:
+        stack_acceptance_committed: true
+        stack_transaction_resolved: true
+      when: not ansible_check_mode
+
     - name: Hash durable acceptance record for interruption proof
       ansible.builtin.command:
         argv:
@@ -534,6 +542,7 @@
           - "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
       register: stack_acceptance_record_hash
       changed_when: false
+      failed_when: false
       when: not ansible_check_mode
 
     - name: Stage durable acceptance receipt
@@ -546,7 +555,10 @@
         content: |
           transaction_id={{ homelab_transaction_id }}
           record_sha256={{ stack_acceptance_record_hash.stdout.split()[0] }}
-      when: not ansible_check_mode
+      failed_when: false
+      when:
+        - not ansible_check_mode
+        - stack_acceptance_record_hash.rc | default(1) == 0
 
     - name: Commit durable acceptance receipt
       ansible.builtin.script:
@@ -560,7 +572,9 @@
       register: stack_acceptance_receipt_commit
       changed_when: stack_acceptance_receipt_commit.rc == 0
       failed_when: false
-      when: not ansible_check_mode
+      when:
+        - not ansible_check_mode
+        - stack_acceptance_record_hash.rc | default(1) == 0
 
     - name: Report durable acceptance
       ansible.builtin.debug:
@@ -618,7 +632,9 @@
           previous_record_id={{ homelab_previous_record_id }}
           phase=ACCEPTANCE_PERSISTENCE_FAILED
       failed_when: false
-      when: stack_runtime_verified | default(false) | bool
+      when:
+        - stack_runtime_verified | default(false) | bool
+        - not (stack_acceptance_committed | default(false) | bool)
 
     - name: Commit explicit acceptance-persistence failure marker
       ansible.builtin.script:
@@ -631,7 +647,9 @@
         executable: /usr/bin/python3
       failed_when: false
       changed_when: false
-      when: stack_runtime_verified | default(false) | bool
+      when:
+        - stack_runtime_verified | default(false) | bool
+        - not (stack_acceptance_committed | default(false) | bool)
 
     - name: Fail closed when acceptance persistence fails after runtime verification
       ansible.builtin.fail:
@@ -642,7 +660,9 @@
           transaction marker blocks new transactions pending operator
           reconciliation. Original failure:
           {{ ansible_failed_result.msg | default(ansible_failed_result) }}
-      when: stack_runtime_verified | default(false) | bool
+      when:
+        - stack_runtime_verified | default(false) | bool
+        - not (stack_acceptance_committed | default(false) | bool)
 
     - name: Refuse failures that occurred before managed mutation
       ansible.builtin.fail:
@@ -766,6 +786,11 @@
       changed_when: true
       when: stack_rollback_available | default(false) | bool
 
+    - name: Mark transaction resolved after verified rollback
+      ansible.builtin.set_fact:
+        stack_transaction_resolved: true
+      when: stack_rollback_available | default(false) | bool
+
     - name: Report failed deployment with successful rollback
       ansible.builtin.fail:
         msg: >-
@@ -776,14 +801,20 @@
       when: stack_rollback_available | default(false) | bool
 
   always:
-    - name: Remove exact candidate directory
+    - name: Remove exact candidate directory only when transaction is resolved
       ansible.builtin.file:
         path: "{{ stack_candidate_dir }}"
         state: absent
       check_mode: false
+      when:
+        - not (stack_mutation_started | default(false) | bool)
+          or (stack_transaction_resolved | default(false) | bool)
 
-    - name: Remove transient rollback directory
+    - name: Remove transient rollback directory only when transaction is resolved
       ansible.builtin.file:
         path: "{{ stack_rollback_dir }}"
         state: absent
       check_mode: false
+      when:
+        - not (stack_mutation_started | default(false) | bool)
+          or (stack_transaction_resolved | default(false) | bool)
