@@ -1,4 +1,4 @@
-.PHONY: validate ci lab-proof idempotency-proof acceptance-proof interruption-proof stale-marker-proof public-safety syntax
+.PHONY: validate ci lab-proof idempotency-proof acceptance-proof interruption-proof stale-marker-proof ssh-interruption-proof public-safety syntax
 
 validate:
 	bash scripts/validate-repository.sh
@@ -20,6 +20,9 @@ interruption-proof:
 
 stale-marker-proof:
 	HOMELAB_LAB_STALE_MARKER_PROOF=1 bash tests/test-lab-stale-accepted-marker.sh
+
+ssh-interruption-proof:
+	HOMELAB_SSH_INTERRUPTION_TEST=1 bash tests/test-ssh-session-interruption.sh
 
 public-safety:
 	python3 scripts/check-public-safety.py
