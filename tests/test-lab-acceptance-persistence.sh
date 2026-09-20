@@ -19,6 +19,7 @@ HOMELAB_LAB_HOSTNAME="$(/bin/hostname)"
 
 target_dir="/opt/homelab-ops/stacks/dozzle"
 record_file="/etc/homelab-ops/deployments/dozzle.record"
+receipt_file="/etc/homelab-ops/deployments/dozzle.receipt"
 marker_file="/var/lib/homelab-ops/transactions/dozzle.unresolved"
 tmp_root="$(mktemp -d)"
 baseline_log="$tmp_root/baseline.log"
@@ -31,7 +32,7 @@ cleanup() {
     sudo /usr/bin/docker compose       --env-file "$target_dir/defaults.env"       -f "$target_dir/docker-compose.yml"       down --remove-orphans >/dev/null 2>&1
   fi
   sudo rm -rf -- "$target_dir"
-  sudo rm -f -- "$record_file" "$marker_file"
+  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
   rm -rf -- "$tmp_root"
 }
 trap cleanup EXIT
@@ -105,8 +106,8 @@ failed_transaction_id="$(
   printf 'FAIL: unresolved marker does not identify the failed transaction.\n' >&2
   exit 1
 }
-sudo grep -Fxq 'mutation_started=true' "$marker_file" || {
-  printf 'FAIL: unresolved marker does not record mutation boundary crossing.\n' >&2
+sudo grep -Fxq 'phase=ACCEPTANCE_PERSISTENCE_FAILED' "$marker_file" || {
+  printf 'FAIL: unresolved marker does not record acceptance persistence failure phase.\n' >&2
   exit 1
 }
 
@@ -120,8 +121,8 @@ set -e
   printf 'FAIL: unresolved acceptance state did not block a new transaction.\n' >&2
   exit 1
 }
-grep -Fq 'PRE_MUTATION_REFUSAL: unresolved transaction state exists' "$blocked_log" || {
-  printf 'FAIL: blocked follow-up transaction did not report unresolved state.\n' >&2
+grep -Fq 'INTERRUPTED_UNRESOLVED' "$blocked_log" || {
+  printf 'FAIL: blocked follow-up transaction did not report unresolved interruption state.\n' >&2
   cat "$blocked_log" >&2
   exit 1
 }
