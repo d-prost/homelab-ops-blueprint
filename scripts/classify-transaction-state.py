@@ -10,6 +10,7 @@ COMMIT = re.compile(r"^[0-9a-f]{40}$")
 HASH = re.compile(r"^[0-9a-f]{64}$")
 TX = re.compile(r"^[A-Za-z0-9._:-]+$")
 PHASES = {
+    "PREPARED",
     "MUTATING",
     "RESTORING",
     "ACCEPTANCE_PENDING",
@@ -80,7 +81,9 @@ def main() -> int:
     action = "MANUAL"
     record_hash = ""
 
-    if marker["phase"] in {"MUTATING", "RESTORING"}:
+    if marker["phase"] == "PREPARED":
+        action = "CLEANUP"
+    elif marker["phase"] in {"MUTATING", "RESTORING"}:
         if marker["previous_accepted_commit"] and marker["previous_record_id"]:
             action = "RESTORE"
     elif marker["phase"] == "ACCEPTANCE_PENDING":
