@@ -221,7 +221,10 @@ inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
 }
 
 export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
+export ANSIBLE_HOST_KEY_CHECKING=True
 bash "$repo_root/scripts/assert-ansible-hosts.sh" "$inventory_file"
+python3 "$repo_root/scripts/validate-target-inventory.py" \
+  "$inventory_file" --environment "$inventory"
 
 become_args=()
 if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
