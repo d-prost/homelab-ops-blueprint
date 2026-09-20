@@ -15,6 +15,10 @@ idempotency-proof:
 acceptance-proof:
 	HOMELAB_LAB_ACCEPTANCE_FAILURE_TEST=1 bash tests/test-lab-acceptance-persistence.sh
 
+failure-matrix-proof:
+	HOMELAB_LAB_FAILURE_MATRIX_TEST=1 bash tests/test-lab-retired-file-convergence.sh
+	HOMELAB_LAB_FAILURE_MATRIX_TEST=1 bash tests/test-lab-rollback-reverify-failure.sh
+
 interruption-proof:
 	HOMELAB_LAB_INTERRUPTION_TEST=1 bash tests/test-lab-interruption-recovery.sh
 

@@ -315,7 +315,10 @@ stack_contract="$stack_dir/stack.yml"
 
 # Every selected payload is re-validated by the current control plane, including
 # historical release tags used for rollback.
-python3 "$repo_root/scripts/validate-stack-contracts.py" --stack-dir "$stack_dir"
+if ! python3 "$repo_root/scripts/validate-stack-contracts.py" --stack-dir "$stack_dir"; then
+  printf 'ERROR: PRE_MUTATION_REFUSAL: candidate stack contract or manifest validation failed.\n' >&2
+  exit 1
+fi
 
 if ((production_operation == 1)); then
   readiness_args=(

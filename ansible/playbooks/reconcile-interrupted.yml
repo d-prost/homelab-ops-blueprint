@@ -119,13 +119,23 @@
       changed_when: false
       check_mode: false
 
+    - name: Read frozen previous accepted record
+      ansible.builtin.slurp:
+        src: "{{ interrupted_rollback_dir }}/previous.record"
+      register: interrupted_previous_record_raw
+      changed_when: false
+      check_mode: false
+
     - name: Require exact previous accepted record
       ansible.builtin.assert:
         that:
           - interrupted_previous_record_hash.stdout.split()[0] == homelab_interrupted_previous_record_id
+          - >-
+            ('commit=' ~ homelab_interrupted_previous_commit)
+            in ((interrupted_previous_record_raw.content | b64decode).splitlines())
         fail_msg: >-
           INTERRUPTED_UNRESOLVED: frozen previous accepted record does not match
-          the transaction marker.
+          the transaction marker commit and record identity.
 
     - name: Set reconciliation boundaries
       ansible.builtin.set_fact:

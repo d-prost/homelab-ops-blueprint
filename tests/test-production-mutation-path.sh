@@ -6,6 +6,7 @@ rollback="$repo_root/scripts/rollback-stack.sh"
 deploy_playbook="$repo_root/ansible/playbooks/deploy-stack.yml"
 preflight_playbook="$repo_root/ansible/playbooks/preflight.yml"
 managed_role="$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+reconcile_playbook="$repo_root/ansible/playbooks/reconcile-interrupted.yml"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -59,6 +60,7 @@ grep -Fq -- 'HOMELAB_RECOVERY_EVIDENCE' "$deploy" || fail 'Production stateful r
 grep -Fq -- 'HOMELAB_BACKUP_MAX_AGE_SECONDS' "$deploy" || fail 'Production stateful readiness must consume environment freshness policy'
 
 grep -Fq -- 'validate-stack-contracts.py' "$deploy" || fail 'selected release payload must use the current contract validator'
+grep -Fq -- 'PRE_MUTATION_REFUSAL: candidate stack contract or manifest validation failed' "$deploy" || fail 'candidate contract/manifest rejection must be an explicit pre-mutation refusal'
 grep -Fq -- 'materialize-git-snapshot.sh' "$deploy" || fail 'deployment must freeze Git payloads before mutation'
 grep -Fq -- 'validate-stack-contracts.py" --stack-dir' "$deploy" || fail 'previous accepted payload must be revalidated before mutation'
 grep -Fq -- 'render-stack-images.py' "$deploy" || fail 'frozen candidate and rollback images must be rendered before mutation'
@@ -100,6 +102,12 @@ fi
 grep -Fq -- 'stack_retired_dests' "$managed_role" || fail 'forward convergence must track files removed from the managed boundary'
 grep -Fq -- 'Stage frozen prior managed files for transaction rollback' "$managed_role" || fail 'rollback must use the frozen accepted payload'
 grep -Fq -- 'Remove files no longer managed by the candidate' "$managed_role" || fail 'forward convergence must remove retired managed files'
+grep -Fq -- 'REJECTED_ROLLBACK_VERIFIED' "$managed_role" || fail 'successful rollback must expose its terminal result'
+grep -Fq -- 'REJECTED_ROLLBACK_FAILED' "$managed_role" || fail 'failed rollback/re-verification must expose its terminal result'
+grep -Fq -- "('commit=' ~ homelab_interrupted_previous_commit)" "$reconcile_playbook" || fail 'interruption recovery must bind frozen previous record to the exact accepted commit'
+if grep -Eq -- '(^|[[:space:]])git([[:space:]]|$)|materialize-git-snapshot' "$reconcile_playbook"; then
+  fail 'post-PREPARED interruption recovery must not consult Git or rematerialize a ref'
+fi
 remove_orphans_count="$(grep -Fc -- '--remove-orphans' "$managed_role")"
 ((remove_orphans_count >= 2)) || fail 'candidate apply and rollback must both remove orphan Compose services'
 
