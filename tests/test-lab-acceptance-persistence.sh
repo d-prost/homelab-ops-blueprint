@@ -6,6 +6,11 @@ set -Eeuo pipefail
   exit 1
 }
 
+# The job-level flag only authorizes this destructive disposable proof. Keep
+# failure injection disabled for the baseline deployment and enable it only for
+# the transaction under test.
+unset HOMELAB_LAB_ACCEPTANCE_FAILURE_TEST
+
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root"
 
