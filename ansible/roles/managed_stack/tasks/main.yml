@@ -253,24 +253,6 @@
       check_mode: false
       no_log: true
 
-    - name: Create exact target directory
-      ansible.builtin.file:
-        path: "{{ stack_target_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0750"
-
-    - name: Create managed target parent directories
-      ansible.builtin.file:
-        path: "{{ stack_target_dir }}/{{ item.dest | dirname }}"
-        state: directory
-        owner: root
-        group: root
-        mode: "0750"
-      loop: "{{ stack_managed_files }}"
-      when: (item.dest | dirname) != '.'
-
     - name: Determine whether automatic rollback is available
       ansible.builtin.set_fact:
         stack_rollback_available: >-
@@ -373,6 +355,24 @@
       ansible.builtin.set_fact:
         stack_mutation_started: true
       when: not ansible_check_mode
+
+    - name: Create exact target directory
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Create managed target parent directories
+      ansible.builtin.file:
+        path: "{{ stack_target_dir }}/{{ item.dest | dirname }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop: "{{ stack_managed_files }}"
+      when: (item.dest | dirname) != '.'
 
     - name: Install allowlisted managed files atomically
       ansible.builtin.copy:
