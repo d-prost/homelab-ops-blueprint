@@ -18,9 +18,17 @@ inventory="$1"
 }
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+inventory_real="$(realpath -- "$inventory")"
+case "$inventory_real" in
+  "$repo_root"/*)
+    printf 'ERROR: private remote-proof inventory must stay outside the repository tree.\n' >&2
+    exit 2
+    ;;
+esac
+inventory="$inventory_real"
 cd "$repo_root"
 
-for cmd in ansible ansible-inventory ansible-playbook python3; do
+for cmd in ansible ansible-inventory ansible-playbook python3 realpath; do
   command -v "$cmd" >/dev/null 2>&1 || {
     printf 'ERROR: required command not found: %s\n' "$cmd" >&2
     exit 1
