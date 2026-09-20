@@ -28,7 +28,7 @@
           - homelab_interrupted_previous_record_id is match('^[0-9a-f]{64}$')
           - homelab_repo_root is defined
           - homelab_repo_root is match('^/.+')
-        fail_msg: INTERRUPTED_UNRESOLVED: exact interruption metadata is required.
+        fail_msg: "INTERRUPTED_UNRESOLVED: exact interruption metadata is required."
 
     - name: Verify target identity before reconciliation
       ansible.builtin.include_tasks:
@@ -75,7 +75,7 @@
           - interrupted_previous_contract.stack_managed_files | length > 0
           - interrupted_previous_contract.stack_expected_services | length > 0
           - interrupted_previous_contract.stack_functional_checks | length > 0
-        fail_msg: INTERRUPTED_UNRESOLVED: rollback contracts are unsafe or incompatible.
+        fail_msg: "INTERRUPTED_UNRESOLVED: rollback contracts are unsafe or incompatible."
 
     - name: Validate previous managed file paths
       ansible.builtin.assert:
@@ -91,7 +91,7 @@
           - "'//' not in item.dest"
           - not item.dest.endswith('/')
           - item.mode is match('^0[0-7]{3}$')
-        fail_msg: INTERRUPTED_UNRESOLVED: previous contract has an unsafe managed path.
+        fail_msg: "INTERRUPTED_UNRESOLVED: previous contract has an unsafe managed path."
       loop: "{{ interrupted_previous_contract.stack_managed_files }}"
       loop_control:
         label: "{{ item.dest | default('invalid-entry') }}"
@@ -199,7 +199,7 @@
           - >-
             interrupted_previous_contract.stack_expected_services
             | difference(interrupted_previous_running.stdout_lines) | length == 0
-        fail_msg: INTERRUPTED_UNRESOLVED: restored services are not all running.
+        fail_msg: "INTERRUPTED_UNRESOLVED: restored services are not all running."
 
     - name: Reverify previous accepted release functionally
       ansible.builtin.script:
