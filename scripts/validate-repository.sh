@@ -15,9 +15,12 @@ python3 tests/test-functional-check-parsing.py
 python3 tests/test-operational-coverage.py
 python3 tests/test-recovery-readiness.py
 python3 tests/test-rollback-material-preflight.py
+python3 tests/test-target-inventory.py
 bash tests/test-integrity-guards.sh
 bash tests/test-production-mutation-path.sh
 bash tests/test-transaction-freeze.sh
+bash tests/test-target-identity.sh
+bash tests/test-ssh-host-key.sh
 if command -v yamllint >/dev/null 2>&1; then yamllint -d '{extends: default, rules: {line-length: disable, truthy: disable}}' .github ansible stacks; fi
 if command -v shellcheck >/dev/null 2>&1; then find scripts tests -type f -name '*.sh' -print0 | xargs -0 shellcheck; fi
 if command -v ansible-playbook >/dev/null 2>&1; then
