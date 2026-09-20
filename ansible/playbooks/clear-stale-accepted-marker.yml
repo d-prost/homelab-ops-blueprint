@@ -24,7 +24,7 @@
           - homelab_expected_record_hash is match('^[0-9a-f]{64}$')
           - homelab_repo_root is defined
           - homelab_repo_root is match('^/.+')
-        fail_msg: INTERRUPTED_UNRESOLVED: exact stale-marker proof is required.
+        fail_msg: "INTERRUPTED_UNRESOLVED: exact stale-marker proof is required."
 
     - name: Verify target identity before stale-marker cleanup
       ansible.builtin.include_tasks:
