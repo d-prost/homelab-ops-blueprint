@@ -222,6 +222,9 @@ esac
 # Only after durable interruption state is resolved do we authorize and freeze
 # a new candidate. This preserves post-PREPARED recovery independence from
 # origin, branches and newly resolved Git references.
+#
+# Historical refs provide stack payload only; the current checkout remains the
+# authoritative control plane for validation, recovery and deployment tooling.
 if [[ "$git_ref" != "HEAD" ]] && ! git check-ref-format --branch "$git_ref" >/dev/null 2>&1; then
   printf 'ERROR: unsafe or invalid Git ref: %s\n' "$git_ref" >&2
   exit 2
