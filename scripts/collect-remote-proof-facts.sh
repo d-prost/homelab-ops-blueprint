@@ -73,7 +73,7 @@ printf 'Control Ansible: '
 ansible --version | head -n1 | sed -E 's/\[[^]]*\]//g'
 
 printf 'Target OS: '
-ansible all -i "$inventory" -b -m ansible.builtin.shell   -a '. /etc/os-release && printf "%s %s" "$NAME" "$VERSION_ID"'   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
+ansible all -i "$inventory" -b -m ansible.builtin.shell   -a ". /etc/os-release && printf '%s %s' \"\$NAME\" \"\$VERSION_ID\""   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
 
 printf 'Docker Engine: '
 ansible all -i "$inventory" -b -m ansible.builtin.command   -a '/usr/bin/docker version --format {{.Server.Version}}'   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
