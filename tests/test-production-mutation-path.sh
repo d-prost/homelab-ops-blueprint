@@ -36,13 +36,15 @@ grep -Fq -- 'stack_runtime_verified: true' "$managed_role" || fail 'runtime PASS
 grep -Fq -- 'Commit acceptance record atomically and durably' "$managed_role" || fail 'acceptance must use the durable atomic commit helper'
 grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$managed_role" || fail 'record persistence failure must have an explicit terminal result'
 grep -Fq -- 'automatic rollback is intentionally not attempted' "$managed_role" || fail 'acceptance persistence failure must not auto-rollback'
+prepared_marker_line="$(grep -nF 'Commit prepared transaction marker durably' "$managed_role" | head -n1 | cut -d: -f1)"
 marker_commit_line="$(grep -nF 'Commit unresolved transaction marker durably before mutation' "$managed_role" | head -n1 | cut -d: -f1)"
 managed_install_line="$(grep -nF 'Install allowlisted managed files atomically' "$managed_role" | head -n1 | cut -d: -f1)"
 runtime_verify_line="$(grep -nF 'Run functional stack verification on the target' "$managed_role" | head -n1 | cut -d: -f1)"
 acceptance_commit_line="$(grep -nF 'Commit acceptance record atomically and durably' "$managed_role" | head -n1 | cut -d: -f1)"
 accepted_report_line="$(grep -nF 'Report durable acceptance' "$managed_role" | head -n1 | cut -d: -f1)"
-[[ -n "$marker_commit_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
-((marker_commit_line < managed_install_line)) || fail 'durable unresolved marker must precede managed mutation'
+[[ -n "$prepared_marker_line" && -n "$marker_commit_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
+((prepared_marker_line < marker_commit_line)) || fail 'PREPARED marker must exist before mutation phase'
+((marker_commit_line < managed_install_line)) || fail 'MUTATING marker must precede managed mutation'
 ((managed_install_line < runtime_verify_line)) || fail 'functional verification must follow managed mutation'
 ((runtime_verify_line < acceptance_commit_line)) || fail 'acceptance record must be committed only after runtime verification'
 ((acceptance_commit_line < accepted_report_line)) || fail 'ACCEPTED must be reported only after durable record commit'
@@ -62,6 +64,15 @@ artifact_preflight_line="$(grep -nF 'preflight-images.yml' "$deploy" | head -n1 
 managed_deploy_line="$(grep -nF 'deploy_args=(' "$deploy" | head -n1 | cut -d: -f1)"
 [[ -n "$artifact_preflight_line" && -n "$managed_deploy_line" ]] || fail 'unable to locate artifact preflight and managed deploy boundaries'
 ((artifact_preflight_line < managed_deploy_line)) || fail 'runtime artifact preflight must occur before managed deployment begins'
+grep -Fq -- 'inspect-transaction-state.yml' "$deploy" || fail 'deployment must inspect unresolved state before candidate preparation'
+grep -Fq -- 'classify-transaction-state.py' "$deploy" || fail 'deployment must classify durable interruption state'
+grep -Fq -- 'reconcile-interrupted.yml' "$deploy" || fail 'MUTATING/RESTORING interruptions must use verified restoration'
+grep -Fq -- 'clear-stale-accepted-marker.yml' "$deploy" || fail 'stale accepted marker cleanup must require durable acceptance proof'
+grep -Fq -- 'cleanup-prepared-interruption.yml' "$deploy" || fail 'PREPARED interruption must clean without rollback'
+inspect_line="$(grep -nF 'inspect-transaction-state.yml' "$deploy" | head -n1 | cut -d: -f1)"
+candidate_freeze_line="$(grep -nF 'materialize-git-snapshot.sh' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$inspect_line" && -n "$candidate_freeze_line" ]] || fail 'unable to locate interruption inspection and candidate freeze'
+((inspect_line < candidate_freeze_line)) || fail 'unresolved state must be reconciled before a new candidate is frozen'
 grep -Fq -- 'read-accepted-record.yml' "$deploy" || fail 'deployment must resolve previous accepted state before mutation'
 grep -Fq -- 'homelab_tooling_commit' "$deploy" || fail 'deployment must carry an independent tooling commit'
 grep -Fq -- 'homelab_previous_release_root' "$deploy" || fail 'deployment must pass a frozen previous accepted payload'
