@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -10,11 +11,19 @@ from pathlib import Path
 SAFE_HOSTNAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]*$")
 MACHINE_ID = re.compile(r"^[0-9a-f]{32}$")
 UNSAFE_SSH = (
-    re.compile(r"StrictHostKeyChecking\s*=\s*(?:no|accept-new)", re.IGNORECASE),
-    re.compile(r"UserKnownHostsFile\s*=\s*/dev/null", re.IGNORECASE),
-    re.compile(r"GlobalKnownHostsFile\s*=\s*/dev/null", re.IGNORECASE),
+    re.compile(
+        r"StrictHostKeyChecking(?:\s*=\s*|\s+)(?:no|accept-new)(?:\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"UserKnownHostsFile(?:\s*=\s*|\s+)/dev/null(?:\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"GlobalKnownHostsFile(?:\s*=\s*|\s+)/dev/null(?:\s|$)",
+        re.IGNORECASE,
+    ),
 )
-FALSE_VALUES = {False, 0, "0", "false", "False", "no", "No", "off", "Off"}
 
 
 class InventoryError(RuntimeError):
@@ -76,7 +85,10 @@ def validate_host(name: str, values: dict, environment: str) -> None:
         )
 
     host_key_setting = values.get("ansible_host_key_checking")
-    if host_key_setting in FALSE_VALUES:
+    if host_key_setting is False or host_key_setting == 0 or (
+        isinstance(host_key_setting, str)
+        and host_key_setting.strip().lower() in {"0", "false", "no", "off"}
+    ):
         raise InventoryError(f"{name}: Production host-key checking must not be disabled")
 
     for key in ("ansible_ssh_args", "ansible_ssh_common_args", "ansible_ssh_extra_args"):
@@ -92,6 +104,18 @@ def validate_host(name: str, values: dict, environment: str) -> None:
                 )
 
 
+def validate_environment_ssh_args() -> None:
+    for key in ("ANSIBLE_SSH_ARGS", "ANSIBLE_SSH_COMMON_ARGS", "ANSIBLE_SSH_EXTRA_ARGS"):
+        value = os.environ.get(key)
+        if not value:
+            continue
+        for pattern in UNSAFE_SSH:
+            if pattern.search(value):
+                raise InventoryError(
+                    f"{key} weakens SSH host-key verification: {value!r}"
+                )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("inventory", type=Path)
@@ -100,6 +124,9 @@ def main() -> int:
 
     if not args.inventory.is_file():
         raise InventoryError(f"inventory is not readable: {args.inventory}")
+
+    if args.environment == "production":
+        validate_environment_ssh_args()
 
     hostvars = inventory_hostvars(args.inventory)
     for name, values in sorted(hostvars.items()):
