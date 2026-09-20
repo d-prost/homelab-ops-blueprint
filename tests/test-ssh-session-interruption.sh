@@ -178,7 +178,7 @@ ANSIBLE_HOST_KEY_CHECKING=True \
 # Establish the previous accepted state through the ordinary local Lab path.
 bash scripts/deploy-stack.sh dozzle --inventory lab >"$tmp_root/baseline.log" 2>&1
 baseline_hash="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"
-sudo cat "$record_file" >"$tmp_root/previous.record"
+sudo cat "$record_file" | tee "$tmp_root/previous.record" >/dev/null
 previous_record_id="$(sha256sum "$tmp_root/previous.record" | awk '{print $1}')"
 previous_commit="$(
   sed -nE 's/^commit=([0-9a-f]{40})$/\1/p' "$tmp_root/previous.record"
