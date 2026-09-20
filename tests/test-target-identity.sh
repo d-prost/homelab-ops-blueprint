@@ -46,7 +46,9 @@ all:
       homelab_expected_hostname: "$expected_hostname"
 $machine_line
 EOF
-  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"     ansible-playbook -i "$tmp_root/hosts.yml" "$tmp_root/playbook.yml" >"$logfile" 2>&1
+  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
+    ansible-playbook -i "$tmp_root/hosts.yml" "$tmp_root/playbook.yml" \
+      >"$logfile" 2>&1
 }
 
 run_case "$actual_hostname" "" "$tmp_root/no-machine.log"
