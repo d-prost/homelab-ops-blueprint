@@ -367,6 +367,8 @@
           previous_commit={{ homelab_previous_accepted_commit }}
           previous_record_id={{ homelab_previous_record_id }}
           target={{ stack_target_dir }}
+          target_hostname={{ homelab_expected_hostname }}
+          target_machine_id={{ homelab_expected_machine_id | default('', true) }}
           verified=functional
       when: not ansible_check_mode
 

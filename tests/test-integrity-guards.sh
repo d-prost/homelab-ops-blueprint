@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-grep -q 'check_mode: false' "$repo_root/ansible/playbooks/deploy-stack.yml"
+
+grep -q 'check_mode: false' "$repo_root/ansible/tasks/verify-target-identity.yml"
 grep -q 'check_mode: false' "$repo_root/ansible/playbooks/preflight.yml"
+grep -Eq '^host_key_checking[[:space:]]*=[[:space:]]*True[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
 grep -Eq '^roles_path[[:space:]]*=[[:space:]]*\./roles[[:space:]]*$' "$repo_root/ansible/ansible.cfg"
+grep -q 'ANSIBLE_HOST_KEY_CHECKING=True' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'validate-target-inventory.py' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'verify-target-identity.yml' "$repo_root/ansible/playbooks/preflight.yml"
+grep -q 'verify-target-identity.yml' "$repo_root/ansible/playbooks/deploy-stack.yml"
+grep -q 'ansible_connection: ssh' "$repo_root/ansible/inventory/production/hosts.example.yml"
+grep -q 'homelab_expected_machine_id: null' "$repo_root/ansible/inventory/production/hosts.example.yml"
+grep -q 'target_hostname=' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'target_machine_id=' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+
 grep -q 'local main control plane is not exactly origin/main' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'prior managed files were restored' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'stack_functional_checks' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"

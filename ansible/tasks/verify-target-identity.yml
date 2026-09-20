@@ -1,0 +1,59 @@
+---
+- name: Require declared target identity
+  ansible.builtin.assert:
+    that:
+      - homelab_environment is defined
+      - homelab_environment in ['production', 'lab']
+      - homelab_expected_hostname is defined
+      - homelab_expected_hostname is string
+      - homelab_expected_hostname is match('^[A-Za-z0-9][A-Za-z0-9.-]*$')
+      - >-
+        homelab_expected_machine_id is not defined
+        or homelab_expected_machine_id is none
+        or
+        (
+          homelab_expected_machine_id is string
+          and homelab_expected_machine_id is match('^[0-9a-f]{32}$')
+        )
+    fail_msg: >-
+      PRE_MUTATION_REFUSAL: inventory must declare a safe expected hostname;
+      expected_machine_id, when used, must be a 32-character lowercase hex ID.
+
+- name: Read actual target hostname
+  ansible.builtin.command:
+    argv:
+      - /bin/hostname
+  register: homelab_actual_hostname
+  changed_when: false
+  check_mode: false
+
+- name: Refuse an unexpected hostname
+  ansible.builtin.assert:
+    that:
+      - homelab_actual_hostname.stdout == homelab_expected_hostname
+    fail_msg: >-
+      PRE_MUTATION_REFUSAL: actual hostname does not match the hostname
+      declared by the selected inventory.
+
+- name: Read stable machine identity when inventory pins it
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - /etc/machine-id
+  register: homelab_actual_machine_id
+  changed_when: false
+  check_mode: false
+  when:
+    - homelab_expected_machine_id is defined
+    - homelab_expected_machine_id is not none
+
+- name: Refuse an unexpected stable machine identity
+  ansible.builtin.assert:
+    that:
+      - homelab_actual_machine_id.stdout == homelab_expected_machine_id
+    fail_msg: >-
+      PRE_MUTATION_REFUSAL: /etc/machine-id does not match the stable machine
+      identity declared by the selected inventory.
+  when:
+    - homelab_expected_machine_id is defined
+    - homelab_expected_machine_id is not none

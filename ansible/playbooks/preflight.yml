@@ -20,30 +20,9 @@
           - homelab_release_root is match('^/.+')
         fail_msg: Pass a safe stack name and absolute control-plane and payload roots.
 
-    - name: Require explicit environment classification
-      ansible.builtin.assert:
-        that:
-          - homelab_environment is defined
-          - homelab_environment in ['production', 'lab']
-          - homelab_expected_hostname is defined
-          - homelab_expected_hostname | length > 0
-        fail_msg: Inventory must declare environment and the exact expected hostname.
-
-    - name: Read actual host name
-      ansible.builtin.command:
-        argv:
-          - /bin/hostname
-      register: homelab_actual_hostname
-      changed_when: false
-      check_mode: false
-
-    - name: Refuse execution on an unexpected host
-      ansible.builtin.assert:
-        that:
-          - homelab_actual_hostname.stdout == homelab_expected_hostname
-        fail_msg: >-
-          Refusing deployment because the actual hostname does not match the
-          exact hostname declared by the selected inventory.
+    - name: Verify declared target identity before any managed mutation
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/verify-target-identity.yml"
 
   tasks:
     - name: Check Docker server access

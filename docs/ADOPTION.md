@@ -13,7 +13,14 @@ cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-Set the Ansible host and the hostname expected on the target.
+Set the SSH target, operator user and hostname expected on the target. Production
+uses the normal OpenSSH `known_hosts` trust store with strict host-key
+verification. Add the target's trusted SSH host key before the first run; an
+unknown or changed host key is a refusal, not an interactive trust prompt.
+
+`homelab_expected_machine_id` is optional. Leave it `null` when hostname +
+SSH host-key identity is sufficient, or set it to the target's 32-character
+`/etc/machine-id` value for an additional stable-machine binding.
 
 Run a check before the first deployment:
 

@@ -221,7 +221,12 @@ inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
 }
 
 export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
+export ANSIBLE_HOST_KEY_CHECKING=True
 bash "$repo_root/scripts/assert-ansible-hosts.sh" "$inventory_file"
+if ((production_operation == 1)); then
+  python3 "$repo_root/scripts/validate-target-inventory.py" \
+    "$inventory_file" --environment production
+fi
 
 become_args=()
 if ((production_operation == 1)) && ! sudo -n true >/dev/null 2>&1; then
@@ -231,12 +236,15 @@ fi
 contract_hash="$(sha256sum "$stack_contract" | awk '{print $1}')"
 manifest_hash="$(sha256sum "$stack_dir/MANIFEST.tsv" | awk '{print $1}')"
 
-ansible-playbook -i "$inventory_file" \
+if ! ansible-playbook -i "$inventory_file" \
   "$repo_root/ansible/playbooks/preflight.yml" \
   -e "stack_name=$stack" \
   -e "homelab_repo_root=$repo_root" \
   -e "homelab_release_root=$release_root" \
-  "${become_args[@]}"
+  "${become_args[@]}"; then
+  printf 'ERROR: PRE_MUTATION_REFUSAL: transport or target preflight failed.\n' >&2
+  exit 1
+fi
 
 # Resolve the previous accepted state only after the selected target passes the
 # existing read-only preflight identity checks, but still before any mutation.
