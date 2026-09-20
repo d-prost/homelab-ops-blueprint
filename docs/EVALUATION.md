@@ -16,6 +16,11 @@ The evaluation path proves the current public contract:
 
 It does not prove application-data restore, multi-host deployment or environment-specific Production recovery objectives.
 
+A separate real remote-target proof is required for the v1 SSH evidence goal. The
+procedure and public-safe evidence format are documented in
+[`REMOTE_SSH_PROOF.md`](REMOTE_SSH_PROOF.md). Documentation alone does not
+satisfy that proof; it must be executed against a genuinely separate SSH target.
+
 ## Requirements
 
 Use a disposable or non-critical Debian/Ubuntu host with `sudo` access and outbound access to the package and container registries required by the setup.
@@ -72,7 +77,8 @@ For a code review, the most relevant files are:
 - `ansible/roles/managed_stack/` — managed-file apply and rollback behavior;
 - `scripts/verify-compose-health.py` — target functional verification;
 - `scripts/check-recovery-readiness.py` — optional stateful mutation gate;
-- `tests/test-lab-rollback.sh` — disposable failure-and-rollback proof.
+- `tests/test-lab-rollback.sh` — disposable failure-and-rollback proof;
+- `REMOTE_SSH_PROOF.md` — procedure for the external separate-target proof.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full control flow and [`ADOPTION.md`](ADOPTION.md) for adapting the repository to another stack.
 
