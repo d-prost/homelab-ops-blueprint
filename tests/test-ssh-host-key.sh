@@ -25,7 +25,13 @@ trap cleanup EXIT
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp_root/host-a"
 ssh-keygen -q -t ed25519 -N '' -f "$tmp_root/host-b"
-port="$((22000 + (RANDOM % 1000)))"
+port="$(python3 - <<'PY'
+import socket
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+)"
 
 cat >"$tmp_root/sshd_config" <<EOF
 Port $port
@@ -41,6 +47,7 @@ StrictModes no
 LogLevel ERROR
 EOF
 
+sudo install -d -m 0755 /run/sshd
 sudo /usr/sbin/sshd -D -f "$tmp_root/sshd_config" -E "$tmp_root/sshd.log" &
 sshd_pid=$!
 
