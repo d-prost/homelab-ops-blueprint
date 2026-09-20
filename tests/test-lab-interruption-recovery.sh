@@ -181,8 +181,14 @@ setsid env HOMELAB_LAB_INTERRUPT_TEST=restore \
     >"$tmp_root/restore-interrupted.log" 2>&1 &
 restore_pid=$!
 
-wait_for "restore interruption point" "$restore_pid" bash -c \
-  "sudo grep -Fxq 'phase=RESTORING' '$marker_file' 2>/dev/null && [ \"$(sudo sha256sum '$target_dir/docker-compose.yml' | awk '{print \\$1}')\" = '$baseline_compose_hash' ]"
+restore_point_reached() {
+  marker_has_phase RESTORING || return 1
+  local current_hash
+  current_hash="$(sudo sha256sum "$target_dir/docker-compose.yml" 2>/dev/null | awk '{print $1}')" || return 1
+  [[ "$current_hash" == "$baseline_compose_hash" ]]
+}
+
+wait_for "restore interruption point" "$restore_pid" restore_point_reached
 
 kill_group "$restore_pid"
 restore_pid=""
