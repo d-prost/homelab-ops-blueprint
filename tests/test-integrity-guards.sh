@@ -36,6 +36,11 @@ grep -q 'previous.record' "$repo_root/ansible/roles/managed_stack/tasks/main.yml
 grep -q 'acceptance.receipt' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'classify-transaction-state.py' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'reconcile-interrupted.yml' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'inspect-transaction-state.yml' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'clear-stale-accepted-marker.yml' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'cleanup-prepared-interruption.yml' "$repo_root/scripts/deploy-stack.sh"
+grep -q 'REJECTED_ROLLBACK_VERIFIED' "$repo_root/ansible/playbooks/reconcile-interrupted.yml"
+grep -q 'record_sha256=' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 if grep -q 'VERIFIED_BUT_NOT_RECORDED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"; then
   printf 'FAIL: acceptance persistence must not create a stable verified-but-unrecorded state.\n' >&2
   exit 1
