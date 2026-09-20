@@ -18,7 +18,7 @@ path=Path(sys.argv[1]); model=yaml.safe_load(path.read_text()); model['services'
 PY_INNER
 set +e
 previous_commit="$(git rev-parse HEAD)"
-sudo cat "$record_file" >"$tmp_root/previous.record"
+sudo cat "$record_file" | tee "$tmp_root/previous.record" >/dev/null
 previous_record_id="$(sha256sum "$tmp_root/previous.record" | awk '{print $1}')"
 contract_hash="$(sha256sum "$tmp_root/stacks/dozzle/stack.yml" | awk '{print $1}')"
 manifest_hash="$(sha256sum "$tmp_root/stacks/dozzle/MANIFEST.tsv" | awk '{print $1}')"
