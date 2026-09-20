@@ -413,7 +413,6 @@
           target_hostname={{ homelab_expected_hostname }}
           target_machine_id={{ homelab_expected_machine_id | default('', true) }}
           verified=functional
-          result=ACCEPTED
       when: not ansible_check_mode
 
     - name: Commit acceptance record atomically and durably
@@ -432,6 +431,13 @@
           }}
         executable: /usr/bin/python3
       changed_when: true
+      when: not ansible_check_mode
+
+    - name: Report durable acceptance
+      ansible.builtin.debug:
+        msg: >-
+          ACCEPTED: functional verification passed and the acceptance record
+          was committed durably.
       when: not ansible_check_mode
 
     - name: Clear unresolved marker after durable acceptance
