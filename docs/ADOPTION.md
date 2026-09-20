@@ -63,11 +63,17 @@ Use Check Mode first:
 bash scripts/deploy-stack.sh my-stack --check
 ```
 
-For changes to the deployment or rollback code itself, run the disposable integration test as well:
+For changes to the deployment or rollback code itself, run the disposable integration tests as well:
 
 ```bash
 make lab-proof
+make idempotency-proof
 ```
+
+The control host serializes the same declared target/stack boundary with a
+host-global lock shared across local operator users. This is intentionally not
+a distributed lock: v1 assumes one configured control host for a given
+target/stack transaction boundary.
 
 For a new service, test the first real deployment on a disposable or non-critical target before adopting it on the main host. The first deployment has no earlier managed configuration to restore automatically.
 
