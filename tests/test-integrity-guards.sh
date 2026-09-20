@@ -22,6 +22,16 @@ grep -q 'ansible_connection: ssh' "$repo_root/ansible/inventory/production/hosts
 grep -q 'homelab_expected_machine_id: null' "$repo_root/ansible/inventory/production/hosts.example.yml"
 grep -q 'target_hostname=' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
 grep -q 'target_machine_id=' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'homelab_transaction_state_dir' "$repo_root/ansible/group_vars/all.yml"
+grep -q 'unresolved transaction state exists' "$repo_root/ansible/playbooks/preflight.yml"
+grep -q 'durable-state-file.py' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'Commit acceptance record atomically and durably' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'ACCEPTANCE_PERSISTENCE_FAILED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+grep -q 'automatic rollback is intentionally not attempted' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
+if grep -q 'VERIFIED_BUT_NOT_RECORDED' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"; then
+  printf 'FAIL: acceptance persistence must not create a stable verified-but-unrecorded state.\n' >&2
+  exit 1
+fi
 
 grep -q 'local main control plane is not exactly origin/main' "$repo_root/scripts/deploy-stack.sh"
 grep -q 'prior managed files were restored' "$repo_root/ansible/roles/managed_stack/tasks/main.yml"
