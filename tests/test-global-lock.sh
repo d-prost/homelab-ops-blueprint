@@ -34,7 +34,10 @@ env \
     source "$REPO_ROOT/scripts/lock-utils.sh"
     homelab_acquire_global_lock "$LOCK_FILE"
     printf "ready\n" >"$READY_FILE"
-    sleep 30
+    sleep 30 &
+    sleep_pid=$!
+    trap '"'"'kill "$sleep_pid" >/dev/null 2>&1 || true; wait "$sleep_pid" >/dev/null 2>&1 || true; exit 0'"'"' TERM INT
+    wait "$sleep_pid"
   ' &
 holder_pid=$!
 
@@ -88,7 +91,8 @@ kill "$holder_pid"
 wait "$holder_pid" || true
 holder_pid=""
 
-# flock ownership disappears automatically with the holder process.
+# The inherited descriptor intentionally keeps the lock while any holder child
+# remains alive; once the holder process tree exits, the kernel releases it.
 homelab_acquire_global_lock "$lock_file"
 
 printf 'Host-global lock proof passed: different runtime environments and OS users serialize on one control host.\n'
