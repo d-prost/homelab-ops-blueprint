@@ -1,12 +1,18 @@
 ---
 # Copy this file to hosts.yml. The real hosts.yml is ignored by Git.
+#
+# Production uses SSH with normal OpenSSH known_hosts verification. Add the
+# target host key to the operator's trusted known_hosts file before deploying.
 all:
   children:
     production:
       hosts:
         production-host:
-          ansible_connection: local
-          ansible_host: 127.0.0.1
+          ansible_connection: ssh
+          ansible_host: CHANGE_ME_TARGET_ADDRESS
           ansible_user: CHANGE_ME_OPERATOR
           homelab_environment: production
           homelab_expected_hostname: CHANGE_ME_PRODUCTION_HOSTNAME
+          # Optional stronger binding. Leave null until you intentionally pin
+          # the target's /etc/machine-id.
+          homelab_expected_machine_id: null
