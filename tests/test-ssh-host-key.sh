@@ -77,7 +77,10 @@ all:
       ansible_ssh_common_args: "-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$known_hosts"
 EOF
   set +e
-  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"   ANSIBLE_HOST_KEY_CHECKING=True     timeout 10 ansible all -i "$tmp_root/hosts.yml" -m ansible.builtin.ping >"$logfile" 2>&1
+  ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg" \
+  ANSIBLE_HOST_KEY_CHECKING=True \
+    timeout 10 ansible all -i "$tmp_root/hosts.yml" \
+      -m ansible.builtin.ping >"$logfile" 2>&1
   local rc=$?
   set -e
   ((rc != 0)) || { cat "$logfile" >&2; return 1; }
