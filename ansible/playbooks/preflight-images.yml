@@ -1,0 +1,44 @@
+---
+- name: Prove immutable runtime artifacts before managed mutation
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+
+  pre_tasks:
+    - name: Require frozen runtime artifact metadata
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name is match('^[a-z0-9][a-z0-9-]*$')
+          - homelab_repo_root is defined
+          - homelab_repo_root is match('^/.+')
+          - homelab_candidate_images_b64 is defined
+          - homelab_candidate_images_b64 | length > 0
+          - homelab_rollback_images_b64 is defined
+        fail_msg: Frozen candidate and rollback image metadata are required.
+
+  tasks:
+    - name: Prove candidate images are locally available or retrievable by digest
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/prove-image-availability.py
+          --scope candidate
+          --images-b64 {{ homelab_candidate_images_b64 }}
+        executable: /usr/bin/python3
+      register: candidate_image_preflight
+      changed_when: "'PREFETCHED candidate ' in candidate_image_preflight.stdout"
+      check_mode: false
+
+    - name: Prove rollback images are locally available or retrievable by digest
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/prove-image-availability.py
+          --scope rollback
+          --images-b64 {{ homelab_rollback_images_b64 }}
+        executable: /usr/bin/python3
+      register: rollback_image_preflight
+      changed_when: "'PREFETCHED rollback ' in rollback_image_preflight.stdout"
+      check_mode: false
+      when: homelab_rollback_images_b64 | length > 0
