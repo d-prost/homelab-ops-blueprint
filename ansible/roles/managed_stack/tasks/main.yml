@@ -128,6 +128,7 @@
       }}
     stack_current_managed_dests: "{{ stack_managed_files | map(attribute='dest') | list }}"
     stack_unresolved_marker: "{{ homelab_transaction_state_dir }}/{{ stack_name }}.unresolved"
+    stack_mutation_started: false
     stack_runtime_verified: false
 
 - name: Determine files introduced only by the candidate release
@@ -309,6 +310,11 @@
       changed_when: true
       when: not ansible_check_mode
 
+    - name: Mark managed mutation boundary as crossed
+      ansible.builtin.set_fact:
+        stack_mutation_started: true
+      when: not ansible_check_mode
+
     - name: Install allowlisted managed files atomically
       ansible.builtin.copy:
         src: "{{ stack_candidate_dir }}/{{ item.dest }}"
@@ -473,6 +479,16 @@
           reconciliation. Original failure:
           {{ ansible_failed_result.msg | default(ansible_failed_result) }}
       when: stack_runtime_verified | default(false) | bool
+
+    - name: Refuse failures that occurred before managed mutation
+      ansible.builtin.fail:
+        msg: >-
+          PRE_MUTATION_REFUSAL: transaction preparation failed before managed
+          Production mutation began. Original failure:
+          {{ ansible_failed_result.msg | default(ansible_failed_result) }}
+      when:
+        - not (stack_runtime_verified | default(false) | bool)
+        - not (stack_mutation_started | default(false) | bool)
 
     - name: Refuse an unprotected deployment failure
       ansible.builtin.fail:
