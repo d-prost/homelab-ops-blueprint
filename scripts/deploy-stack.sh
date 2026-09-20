@@ -99,8 +99,6 @@ if ((production_operation == 1)); then
   }
 fi
 
-fi
-
 operation_root="$(mktemp -d /tmp/homelab-ops-operation.XXXXXXXX)"
 transaction_root="$operation_root"
 
