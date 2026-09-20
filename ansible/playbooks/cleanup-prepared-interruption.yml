@@ -24,7 +24,7 @@
           - homelab_interrupted_transaction_id is match('^[A-Za-z0-9._:-]+$')
           - homelab_repo_root is defined
           - homelab_repo_root is match('^/.+')
-        fail_msg: INTERRUPTED_UNRESOLVED: exact PREPARED interruption metadata is required.
+        fail_msg: "INTERRUPTED_UNRESOLVED: exact PREPARED interruption metadata is required."
 
     - name: Verify target identity before prepared cleanup
       ansible.builtin.include_tasks:
