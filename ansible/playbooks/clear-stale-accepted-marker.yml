@@ -59,17 +59,14 @@
         that:
           - stale_record_hash.stdout.split()[0] == homelab_expected_record_hash
           - >-
-            ('transaction_id=' + homelab_interrupted_transaction_id + '
-')
-            in (stale_record.content | b64decode)
+            ('transaction_id=' ~ homelab_interrupted_transaction_id)
+            in ((stale_record.content | b64decode).splitlines())
           - >-
-            ('transaction_id=' + homelab_interrupted_transaction_id + '
-')
-            in (stale_receipt.content | b64decode)
+            ('transaction_id=' ~ homelab_interrupted_transaction_id)
+            in ((stale_receipt.content | b64decode).splitlines())
           - >-
-            ('record_sha256=' + homelab_expected_record_hash + '
-')
-            in (stale_receipt.content | b64decode)
+            ('record_sha256=' ~ homelab_expected_record_hash)
+            in ((stale_receipt.content | b64decode).splitlines())
         fail_msg: >-
           INTERRUPTED_UNRESOLVED: stale marker cannot be cleared because durable
           acceptance of the matching transaction was not proven.
