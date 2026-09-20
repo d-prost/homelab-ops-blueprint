@@ -25,6 +25,21 @@
         file: "{{ playbook_dir }}/../tasks/verify-target-identity.yml"
 
   tasks:
+    - name: Inspect unresolved transaction marker
+      ansible.builtin.stat:
+        path: "{{ homelab_transaction_state_dir }}/{{ stack_name }}.unresolved"
+      register: homelab_unresolved_transaction
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse a new transaction while prior state is unresolved
+      ansible.builtin.assert:
+        that:
+          - not homelab_unresolved_transaction.stat.exists
+        fail_msg: >-
+          PRE_MUTATION_REFUSAL: unresolved transaction state exists for this
+          stack. Operator reconciliation is required before a new candidate.
+
     - name: Check Docker server access
       ansible.builtin.command:
         argv: "{{ homelab_clean_docker_argv + ['version'] }}"
