@@ -37,8 +37,12 @@ trap cleanup EXIT
   exit 1
 }
 
-HOMELAB_LAB_STALE_MARKER_TEST=1 \
-  bash scripts/deploy-stack.sh dozzle --inventory lab >"$tmp_root/first.log" 2>&1
+if ! HOMELAB_LAB_STALE_MARKER_TEST=1 \
+  bash scripts/deploy-stack.sh dozzle --inventory lab >"$tmp_root/first.log" 2>&1; then
+  printf 'FAIL: stale-marker fixture deployment failed.\n' >&2
+  cat "$tmp_root/first.log" >&2
+  exit 1
+fi
 
 sudo test -f "$marker_file" || {
   printf 'FAIL: accepted stale-marker fixture did not leave unresolved marker.\n' >&2
@@ -72,7 +76,11 @@ receipt_hash="$(sudo sed -nE 's/^record_sha256=([0-9a-f]{64})$/\1/p' "$receipt_f
   exit 1
 }
 
-bash scripts/deploy-stack.sh dozzle --inventory lab >"$tmp_root/second.log" 2>&1
+if ! bash scripts/deploy-stack.sh dozzle --inventory lab >"$tmp_root/second.log" 2>&1; then
+  printf 'FAIL: follow-up deployment failed while resolving stale accepted marker.\n' >&2
+  cat "$tmp_root/second.log" >&2
+  exit 1
+fi
 
 grep -Fq 'stale marker cleared without rollback' "$tmp_root/second.log" || {
   printf 'FAIL: follow-up transaction did not prove and clear stale accepted marker.\n' >&2
