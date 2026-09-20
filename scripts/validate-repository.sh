@@ -17,6 +17,7 @@ python3 tests/test-recovery-readiness.py
 python3 tests/test-rollback-material-preflight.py
 python3 tests/test-target-inventory.py
 python3 tests/test-target-lock-key.py
+python3 tests/test-durable-state-file.py
 bash tests/test-integrity-guards.sh
 bash tests/test-production-mutation-path.sh
 bash tests/test-transaction-freeze.sh
