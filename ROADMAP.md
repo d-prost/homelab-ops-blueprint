@@ -31,7 +31,7 @@ The external-test item is an evidence goal, not a popularity threshold. Stars an
 ## Next
 
 - add more unit tests around stack-contract and functional-check parsing;
-- run and document a real remote-host integration test;
+- execute and publish the public-safe evidence from `docs/REMOTE_SSH_PROOF.md` on a genuinely separate SSH target;
 - cover more failure cases around invalid manifests, target mismatches, failed health checks and incomplete rollback state;
 - collect at least one external clean-host or remote-target evaluation report when available;
 - prepare the first stable release once those paths have been exercised consistently.
