@@ -118,11 +118,14 @@ Before Production is changed, the deployment path verifies that:
 - `MANIFEST.tsv` matches the source-to-target file mapping;
 - container images are pinned by digest;
 - functional checks pass on the target after Compose starts;
-- the accepted Git commit is recorded only after those checks pass.
+- the accepted Git commit is recorded only after those checks pass;
+- the acceptance record is committed with fsync + atomic rename semantics before the transaction is reported as accepted.
 
 Files that were managed by the previous release but are no longer part of the new contract are removed. Compose is also run with orphan cleanup so removed services do not remain running after a successful deployment or rollback.
 
 If a deployment fails and the previous managed configuration can be reconstructed, the role restores that configuration and runs the previous checks again. This rollback covers managed configuration, not application data or Docker volumes.
+
+If functional verification passes but the durable acceptance record cannot be committed, the candidate is **not accepted** and the workflow deliberately does not auto-rollback. A durable unresolved marker blocks subsequent transactions for that stack until an operator reconciles the target and acceptance evidence. This avoids making additional configuration writes when the failure may be caused by disk, filesystem, permission or mount problems.
 
 Stateful stacks can also require recovery-readiness evidence before a Production change. That is handled separately from configuration rollback; see [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
 
