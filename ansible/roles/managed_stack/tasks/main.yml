@@ -391,6 +391,17 @@
         state: absent
       loop: "{{ stack_retired_dests }}"
 
+    - name: Pause after managed mutation for interruption proof
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sleep
+          - "300"
+      changed_when: false
+      when:
+        - not ansible_check_mode
+        - homelab_environment == 'lab'
+        - lookup('env', 'HOMELAB_LAB_INTERRUPT_TEST') == 'mutation'
+
     - name: Apply Compose model
       ansible.builtin.command:
         argv: >-
