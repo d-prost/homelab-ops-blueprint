@@ -55,15 +55,29 @@
           INTERRUPTED_UNRESOLVED: target-local rollback material is incomplete;
           automatic interruption reconciliation is unsafe.
 
-    - name: Load interrupted candidate contract
-      ansible.builtin.include_vars:
-        file: "{{ interrupted_candidate_dir }}/stack.yml"
-        name: interrupted_candidate_contract
+    - name: Read interrupted candidate contract from target-local recovery material
+      ansible.builtin.slurp:
+        src: "{{ interrupted_candidate_dir }}/stack.yml"
+      register: interrupted_candidate_contract_raw
+      changed_when: false
+      check_mode: false
 
-    - name: Load previous accepted contract
-      ansible.builtin.include_vars:
-        file: "{{ interrupted_rollback_dir }}/stack.yml"
-        name: interrupted_previous_contract
+    - name: Parse interrupted candidate contract
+      ansible.builtin.set_fact:
+        interrupted_candidate_contract: >-
+          {{ interrupted_candidate_contract_raw.content | b64decode | from_yaml }}
+
+    - name: Read previous accepted contract from target-local recovery material
+      ansible.builtin.slurp:
+        src: "{{ interrupted_rollback_dir }}/stack.yml"
+      register: interrupted_previous_contract_raw
+      changed_when: false
+      check_mode: false
+
+    - name: Parse previous accepted contract
+      ansible.builtin.set_fact:
+        interrupted_previous_contract: >-
+          {{ interrupted_previous_contract_raw.content | b64decode | from_yaml }}
 
     - name: Validate reconciliation contract boundaries
       ansible.builtin.assert:
