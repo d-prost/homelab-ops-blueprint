@@ -1,0 +1,250 @@
+---
+- name: Reconcile an interrupted managed transaction
+  hosts: all
+  gather_facts: false
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+  vars:
+    interrupted_candidate_dir: >-
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_interrupted_transaction_id }}
+    interrupted_rollback_dir: >-
+      {{ homelab_candidate_dir }}/{{ stack_name }}-{{ homelab_interrupted_transaction_id }}-rollback
+    interrupted_marker: "{{ homelab_transaction_state_dir }}/{{ stack_name }}.unresolved"
+
+  pre_tasks:
+    - name: Require exact interruption metadata
+      ansible.builtin.assert:
+        that:
+          - stack_name is defined
+          - stack_name is match('^[a-z0-9][a-z0-9-]*$')
+          - homelab_interrupted_transaction_id is defined
+          - homelab_interrupted_transaction_id is match('^[A-Za-z0-9._:-]+$')
+          - homelab_interrupted_candidate_commit is defined
+          - homelab_interrupted_candidate_commit is match('^[0-9a-f]{40}$')
+          - homelab_interrupted_previous_commit is defined
+          - homelab_interrupted_previous_commit is match('^[0-9a-f]{40}$')
+          - homelab_interrupted_previous_record_id is defined
+          - homelab_interrupted_previous_record_id is match('^[0-9a-f]{64}$')
+          - homelab_repo_root is defined
+          - homelab_repo_root is match('^/.+')
+        fail_msg: INTERRUPTED_UNRESOLVED: exact interruption metadata is required.
+
+    - name: Verify target identity before reconciliation
+      ansible.builtin.include_tasks:
+        file: "{{ playbook_dir }}/../tasks/verify-target-identity.yml"
+
+  tasks:
+    - name: Inspect required rollback material
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: interrupted_material
+      loop:
+        - "{{ interrupted_marker }}"
+        - "{{ interrupted_candidate_dir }}/stack.yml"
+        - "{{ interrupted_rollback_dir }}/stack.yml"
+        - "{{ interrupted_rollback_dir }}/previous.record"
+      changed_when: false
+      check_mode: false
+
+    - name: Require complete target-local rollback material
+      ansible.builtin.assert:
+        that:
+          - interrupted_material.results | map(attribute='stat.exists') | select('equalto', false) | list | length == 0
+        fail_msg: >-
+          INTERRUPTED_UNRESOLVED: target-local rollback material is incomplete;
+          automatic interruption reconciliation is unsafe.
+
+    - name: Load interrupted candidate contract
+      ansible.builtin.include_vars:
+        file: "{{ interrupted_candidate_dir }}/stack.yml"
+        name: interrupted_candidate_contract
+
+    - name: Load previous accepted contract
+      ansible.builtin.include_vars:
+        file: "{{ interrupted_rollback_dir }}/stack.yml"
+        name: interrupted_previous_contract
+
+    - name: Validate reconciliation contract boundaries
+      ansible.builtin.assert:
+        that:
+          - interrupted_candidate_contract is mapping
+          - interrupted_previous_contract is mapping
+          - interrupted_candidate_contract.stack_target_dir == interrupted_previous_contract.stack_target_dir
+          - interrupted_previous_contract.stack_target_dir is match('^/(opt|srv)/homelab-ops/[A-Za-z0-9._/-]+$')
+          - interrupted_previous_contract.stack_managed_files | length > 0
+          - interrupted_previous_contract.stack_expected_services | length > 0
+          - interrupted_previous_contract.stack_functional_checks | length > 0
+        fail_msg: INTERRUPTED_UNRESOLVED: rollback contracts are unsafe or incompatible.
+
+    - name: Validate previous managed file paths
+      ansible.builtin.assert:
+        that:
+          - item.dest is defined
+          - item.mode is defined
+          - item.dest is string
+          - item.mode is string
+          - item.dest is match('^[A-Za-z0-9._/-]+$')
+          - not item.dest.startswith('/')
+          - "'..' not in item.dest.split('/')"
+          - "'.' not in item.dest.split('/')"
+          - "'//' not in item.dest"
+          - not item.dest.endswith('/')
+          - item.mode is match('^0[0-7]{3}$')
+        fail_msg: INTERRUPTED_UNRESOLVED: previous contract has an unsafe managed path.
+      loop: "{{ interrupted_previous_contract.stack_managed_files }}"
+      loop_control:
+        label: "{{ item.dest | default('invalid-entry') }}"
+
+    - name: Hash frozen previous accepted record
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sha256sum
+          - "{{ interrupted_rollback_dir }}/previous.record"
+      register: interrupted_previous_record_hash
+      changed_when: false
+      check_mode: false
+
+    - name: Require exact previous accepted record
+      ansible.builtin.assert:
+        that:
+          - interrupted_previous_record_hash.stdout.split()[0] == homelab_interrupted_previous_record_id
+        fail_msg: >-
+          INTERRUPTED_UNRESOLVED: frozen previous accepted record does not match
+          the transaction marker.
+
+    - name: Set reconciliation boundaries
+      ansible.builtin.set_fact:
+        interrupted_target_dir: "{{ interrupted_previous_contract.stack_target_dir }}"
+        interrupted_previous_dests: >-
+          {{ interrupted_previous_contract.stack_managed_files | map(attribute='dest') | list }}
+        interrupted_candidate_dests: >-
+          {{ interrupted_candidate_contract.stack_managed_files | map(attribute='dest') | list }}
+
+    - name: Stage restoring marker
+      ansible.builtin.copy:
+        dest: "{{ interrupted_rollback_dir }}/transaction.restoring"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: |
+          transaction_id={{ homelab_interrupted_transaction_id }}
+          stack={{ stack_name }}
+          candidate_commit={{ homelab_interrupted_candidate_commit }}
+          previous_accepted_commit={{ homelab_interrupted_previous_commit }}
+          previous_record_id={{ homelab_interrupted_previous_record_id }}
+          phase=RESTORING
+
+    - name: Commit restoring marker durably before recovery mutation
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ interrupted_rollback_dir }}/transaction.restoring
+          --destination {{ interrupted_marker }}
+          --mode 0600
+        executable: /usr/bin/python3
+      changed_when: true
+
+    - name: Restore previous managed files
+      ansible.builtin.copy:
+        src: "{{ interrupted_rollback_dir }}/{{ item.dest }}"
+        dest: "{{ interrupted_target_dir }}/{{ item.dest }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+        backup: false
+      loop: "{{ interrupted_previous_contract.stack_managed_files }}"
+
+    - name: Pause during restore for interruption proof
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sleep
+          - "300"
+      changed_when: false
+      when:
+        - homelab_environment == 'lab'
+        - lookup('env', 'HOMELAB_LAB_INTERRUPT_TEST') == 'restore'
+
+    - name: Remove files introduced only by interrupted candidate
+      ansible.builtin.file:
+        path: "{{ interrupted_target_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ interrupted_candidate_dests | difference(interrupted_previous_dests) }}"
+
+    - name: Reapply previous Compose model
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', interrupted_target_dir + '/defaults.env',
+              '-f', interrupted_target_dir + '/' + interrupted_previous_contract.stack_compose_dest,
+              'up', '-d', '--remove-orphans'] }}
+      changed_when: true
+
+    - name: Read running services after interruption restore
+      ansible.builtin.command:
+        argv: >-
+          {{ homelab_clean_docker_argv +
+             ['compose', '--env-file', interrupted_target_dir + '/defaults.env',
+              '-f', interrupted_target_dir + '/' + interrupted_previous_contract.stack_compose_dest,
+              'ps', '--status', 'running', '--services'] }}
+      register: interrupted_previous_running
+      changed_when: false
+
+    - name: Require previous services after interruption restore
+      ansible.builtin.assert:
+        that:
+          - >-
+            interrupted_previous_contract.stack_expected_services
+            | difference(interrupted_previous_running.stdout_lines) | length == 0
+        fail_msg: INTERRUPTED_UNRESOLVED: restored services are not all running.
+
+    - name: Reverify previous accepted release functionally
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/verify-compose-health.py
+          --stack-dir {{ interrupted_target_dir }}
+          --compose-file {{ interrupted_previous_contract.stack_compose_dest }}
+          --env-file defaults.env
+          --contract {{ interrupted_rollback_dir }}/stack.yml
+        executable: /usr/bin/python3
+      changed_when: false
+
+    - name: Restore exact previous accepted record durably
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ interrupted_rollback_dir }}/previous.record
+          --destination {{ homelab_deployment_record_dir }}/{{ stack_name }}.record
+          --mode 0640
+        executable: /usr/bin/python3
+      changed_when: true
+
+    - name: Clear unresolved marker only after verified restoration
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          remove
+          --path {{ interrupted_marker }}
+        executable: /usr/bin/python3
+      changed_when: true
+
+    - name: Remove interrupted candidate directory
+      ansible.builtin.file:
+        path: "{{ interrupted_candidate_dir }}"
+        state: absent
+
+    - name: Remove interrupted rollback directory
+      ansible.builtin.file:
+        path: "{{ interrupted_rollback_dir }}"
+        state: absent
+
+    - name: Report verified interruption recovery
+      ansible.builtin.debug:
+        msg: >-
+          REJECTED_ROLLBACK_VERIFIED: interrupted transaction
+          {{ homelab_interrupted_transaction_id }} was restored to the previous
+          durable accepted configuration and functionally reverified.
