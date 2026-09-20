@@ -221,7 +221,9 @@ target_lock_key="$(python3 "$repo_root/scripts/target-lock-key.py" "$inventory_f
 lock_file="/run/lock/homelab-ops-${target_lock_key}-${stack}.lock"
 # shellcheck source=scripts/lock-utils.sh
 source "$repo_root/scripts/lock-utils.sh"
-if ! homelab_acquire_global_lock "$lock_file"; then
+if homelab_acquire_global_lock "$lock_file"; then
+  :
+else
   lock_rc=$?
   if ((lock_rc == 75)); then
     printf 'ERROR: PRE_MUTATION_REFUSAL: another transaction already holds the target/stack lock: %s\n' "$lock_file" >&2
