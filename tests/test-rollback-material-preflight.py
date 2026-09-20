@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory() as tmp:
             str(tmpdir / "missing-snapshot"),
             "stacks/dozzle",
         ),
-        "",
+        "Git commit is unavailable for snapshot materialization",
     )
 
     fake_render = tmpdir / "fake-render-docker"
