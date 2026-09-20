@@ -54,7 +54,7 @@ all:
   hosts:
     prod:
       ansible_connection: ssh
-      ansible_host: 192.0.2.10
+      ansible_host: example.invalid
       ansible_user: operator
       homelab_environment: production
       homelab_expected_hostname: prod.example
@@ -93,7 +93,7 @@ all:
   hosts:
     prod:
       ansible_connection: ssh
-      ansible_host: 192.0.2.10
+      ansible_host: example.invalid
       ansible_user: operator
       ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
       homelab_environment: production
@@ -109,7 +109,7 @@ all:
   hosts:
     prod:
       ansible_connection: ssh
-      ansible_host: 192.0.2.10
+      ansible_host: example.invalid
       ansible_user: operator
       homelab_environment: production
       homelab_expected_hostname: prod.example
