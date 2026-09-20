@@ -1,4 +1,4 @@
-.PHONY: validate ci lab-proof public-safety syntax
+.PHONY: validate ci lab-proof idempotency-proof public-safety syntax
 
 validate:
 	bash scripts/validate-repository.sh
@@ -8,6 +8,9 @@ ci:
 
 lab-proof:
 	HOMELAB_LAB_ROLLBACK_TEST=1 bash tests/test-lab-rollback.sh
+
+idempotency-proof:
+	HOMELAB_LAB_IDEMPOTENCY_TEST=1 bash tests/test-lab-idempotency.sh
 
 public-safety:
 	python3 scripts/check-public-safety.py
