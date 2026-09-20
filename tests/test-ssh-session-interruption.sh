@@ -72,6 +72,10 @@ cleanup() {
   fi
   sudo rm -rf -- "$target_dir" "$candidate_dir" "$rollback_dir"
   sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
+  sudo rm -f -- /etc/sudoers.d/homelab-ci-ssh
+  if id "$ssh_user" >/dev/null 2>&1; then
+    sudo userdel --remove "$ssh_user" >/dev/null 2>&1 || true
+  fi
   rm -rf -- "$tmp_root"
 }
 trap cleanup EXIT
@@ -83,9 +87,6 @@ trap cleanup EXIT
 
 ssh-keygen -q -t ed25519 -N '' -f "$tmp_root/host-key"
 ssh-keygen -q -t ed25519 -N '' -f "$tmp_root/client-key"
-cp "$tmp_root/client-key.pub" "$tmp_root/authorized_keys"
-chmod 0600 "$tmp_root/authorized_keys"
-
 port="$(python3 - <<'PY'
 import socket
 with socket.socket() as sock:
@@ -93,13 +94,22 @@ with socket.socket() as sock:
     print(sock.getsockname()[1])
 PY
 )"
-ssh_user="$(id -un)"
+ssh_user="homelab-ci-ssh"
+sudo useradd --create-home --shell /bin/bash "$ssh_user"
+printf '%s:%s\n' "$ssh_user" "homelab-ci-disabled-password" | sudo chpasswd
+sudo install -d -m 0700 -o "$ssh_user" -g "$ssh_user" "/home/$ssh_user/.ssh"
+sudo install -m 0600 -o "$ssh_user" -g "$ssh_user" \
+  "$tmp_root/client-key.pub" "/home/$ssh_user/.ssh/authorized_keys"
+printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$ssh_user" \
+  | sudo tee /etc/sudoers.d/homelab-ci-ssh >/dev/null
+sudo chmod 0440 /etc/sudoers.d/homelab-ci-ssh
+
 cat >"$tmp_root/sshd_config" <<EOF
 Port $port
 ListenAddress 127.0.0.1
 HostKey $tmp_root/host-key
 PidFile $tmp_root/sshd.pid
-AuthorizedKeysFile $tmp_root/authorized_keys
+AuthorizedKeysFile .ssh/authorized_keys
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
