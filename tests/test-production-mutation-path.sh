@@ -31,6 +31,21 @@ grep -Fq -- 'check-recovery-readiness.py' "$deploy" || fail 'Production deployme
 grep -Fq -- 'ANSIBLE_HOST_KEY_CHECKING=True' "$deploy" || fail 'Production wrapper must force Ansible host-key checking on'
 grep -Fq -- 'validate-target-inventory.py' "$deploy" || fail 'Production inventory transport policy must be validated before connection'
 grep -Fq -- 'PRE_MUTATION_REFUSAL: transport or target preflight failed' "$deploy" || fail 'transport or target identity failure must be classified before mutation'
+grep -Fq -- 'unresolved transaction state exists' "$preflight_playbook" || fail 'unresolved acceptance state must block a new transaction before mutation'
+grep -Fq -- 'stack_runtime_verified: true' "$managed_role" || fail 'runtime PASS must be explicit before acceptance commit'
+grep -Fq -- 'Commit acceptance record atomically and durably' "$managed_role" || fail 'acceptance must use the durable atomic commit helper'
+grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$managed_role" || fail 'record persistence failure must have an explicit terminal result'
+grep -Fq -- 'automatic rollback is intentionally not attempted' "$managed_role" || fail 'acceptance persistence failure must not auto-rollback'
+marker_commit_line="$(grep -nF 'Commit unresolved transaction marker durably before mutation' "$managed_role" | head -n1 | cut -d: -f1)"
+managed_install_line="$(grep -nF 'Install allowlisted managed files atomically' "$managed_role" | head -n1 | cut -d: -f1)"
+runtime_verify_line="$(grep -nF 'Run functional stack verification on the target' "$managed_role" | head -n1 | cut -d: -f1)"
+acceptance_commit_line="$(grep -nF 'Commit acceptance record atomically and durably' "$managed_role" | head -n1 | cut -d: -f1)"
+accepted_report_line="$(grep -nF 'Report durable acceptance' "$managed_role" | head -n1 | cut -d: -f1)"
+[[ -n "$marker_commit_line" && -n "$managed_install_line" && -n "$runtime_verify_line" && -n "$acceptance_commit_line" && -n "$accepted_report_line" ]] || fail 'unable to locate transaction acceptance boundaries'
+((marker_commit_line < managed_install_line)) || fail 'durable unresolved marker must precede managed mutation'
+((managed_install_line < runtime_verify_line)) || fail 'functional verification must follow managed mutation'
+((runtime_verify_line < acceptance_commit_line)) || fail 'acceptance record must be committed only after runtime verification'
+((acceptance_commit_line < accepted_report_line)) || fail 'ACCEPTED must be reported only after durable record commit'
 grep -Fq -- '--current-contract' "$deploy" || fail 'historical payloads must be checked against current stateful classification'
 grep -Fq -- '--forbid-evidence-under' "$deploy" || fail 'private readiness evidence must stay outside the public repository tree'
 grep -Fq -- 'HOMELAB_RECOVERY_EVIDENCE' "$deploy" || fail 'Production stateful readiness must consume private evidence'
