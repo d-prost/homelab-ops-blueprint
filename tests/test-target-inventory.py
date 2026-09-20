@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -13,11 +14,19 @@ def write_inventory(path: Path, body: str) -> None:
     path.write_text(body, encoding="utf-8")
 
 
-def run(path: Path, environment: str) -> subprocess.CompletedProcess[str]:
+def run(
+    path: Path,
+    environment: str,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         ["python3", str(VALIDATOR), str(path), "--environment", environment],
         text=True,
         capture_output=True,
+        env=env,
     )
 
 
@@ -53,6 +62,15 @@ all:
 """,
     )
     expect_ok(run(inventory, "production"))
+
+    expect_fail(
+        run(
+            inventory,
+            "production",
+            {"ANSIBLE_SSH_ARGS": "-o StrictHostKeyChecking=no"},
+        ),
+        "ANSIBLE_SSH_ARGS weakens SSH host-key verification",
+    )
 
     write_inventory(
         inventory,
