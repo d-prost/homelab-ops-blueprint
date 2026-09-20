@@ -258,28 +258,37 @@ if [[ -f "$transaction_root/previous.record" ]]; then
   previous_accepted_commit="${previous_commit_matches[0]}"
   previous_record_id="$(sha256sum "$transaction_root/previous.record" | awk '{print $1}')"
   previous_release_root="$transaction_root/previous"
-  bash "$repo_root/scripts/materialize-git-snapshot.sh" \
-    "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null
+  if ! bash "$repo_root/scripts/materialize-git-snapshot.sh" \
+    "$repo_root" "$previous_accepted_commit" "$previous_release_root" "stacks/$stack" >/dev/null; then
+    printf 'ERROR: PRE_MUTATION_REFUSAL: previous accepted Git material is unavailable.\n' >&2
+    exit 1
+  fi
 
   previous_stack_dir="$previous_release_root/stacks/$stack"
   python3 "$repo_root/scripts/validate-stack-contracts.py" --stack-dir "$previous_stack_dir" || {
     printf 'ERROR: PRE_MUTATION_REFUSAL: previous accepted rollback material is invalid.\n' >&2
     exit 1
   }
-  rollback_images_b64="$(
+  if ! rollback_images_b64="$(
     python3 "$repo_root/scripts/render-stack-images.py" \
       --stack-dir "$previous_stack_dir" \
       --docker-path /usr/bin/docker \
       --base64-json
-  )"
+  )"; then
+    printf 'ERROR: PRE_MUTATION_REFUSAL: rollback runtime images cannot be resolved.\n' >&2
+    exit 1
+  fi
 fi
 
-candidate_images_b64="$(
+if ! candidate_images_b64="$(
   python3 "$repo_root/scripts/render-stack-images.py" \
     --stack-dir "$stack_dir" \
     --docker-path /usr/bin/docker \
     --base64-json
-)"
+)"; then
+  printf 'ERROR: PRE_MUTATION_REFUSAL: candidate runtime images cannot be resolved.\n' >&2
+  exit 1
+fi
 
 if ((check_mode == 0)); then
   ansible-playbook -i "$inventory_file" \
