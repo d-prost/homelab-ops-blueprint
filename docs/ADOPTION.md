@@ -99,6 +99,22 @@ bash scripts/rollback-stack.sh my-stack release-YYYYMMDD-HHMMSSZ
 
 The selected tag supplies the stack payload. The current checkout still supplies the inventory, Ansible role and validation code.
 
+### Acceptance persistence failure
+
+A successful runtime check is not sufficient by itself. Acceptance is committed only
+after the deployment record is durably written. If that persistence step fails,
+the command reports `ACCEPTANCE_PERSISTENCE_FAILED`, does not automatically
+roll back the verified runtime, and leaves:
+
+```text
+/var/lib/homelab-ops/transactions/<stack>.unresolved
+```
+
+Subsequent transactions are refused while that marker exists. Inspect the target
+runtime, the last durable record in `/etc/homelab-ops/deployments/`, and the
+underlying storage/permission failure before removing the marker as an explicit
+operator reconciliation step. Do not remove it merely to bypass the guard.
+
 ## Report an adoption result
 
 Reports from environments outside the repository's own CI are useful because they expose assumptions that a single maintainer's setup may not reveal.
