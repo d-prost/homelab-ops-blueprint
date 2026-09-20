@@ -68,6 +68,7 @@ grep -Fq -- 'inspect-transaction-state.yml' "$deploy" || fail 'deployment must i
 grep -Fq -- 'classify-transaction-state.py' "$deploy" || fail 'deployment must classify durable interruption state'
 grep -Fq -- 'reconcile-interrupted.yml' "$deploy" || fail 'MUTATING/RESTORING interruptions must use verified restoration'
 grep -Fq -- 'clear-stale-accepted-marker.yml' "$deploy" || fail 'stale accepted marker cleanup must require durable acceptance proof'
+grep -Fq -- 'ACCEPTANCE_PERSISTENCE_FAILED' "$repo_root/scripts/classify-transaction-state.py" || fail 'acceptance persistence failure must remain a classifier-visible manual state'
 grep -Fq -- 'cleanup-prepared-interruption.yml' "$deploy" || fail 'PREPARED interruption must clean without rollback'
 inspect_line="$(grep -nF 'inspect-transaction-state.yml' "$deploy" | head -n1 | cut -d: -f1)"
 candidate_freeze_line="$(grep -nF 'materialize-git-snapshot.sh' "$deploy" | head -n1 | cut -d: -f1)"
