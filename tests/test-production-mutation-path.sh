@@ -79,6 +79,9 @@ inspect_line="$(grep -nF 'inspect-transaction-state.yml' "$deploy" | head -n1 | 
 candidate_freeze_line="$(grep -nF 'materialize-git-snapshot.sh' "$deploy" | head -n1 | cut -d: -f1)"
 [[ -n "$inspect_line" && -n "$candidate_freeze_line" ]] || fail 'unable to locate interruption inspection and candidate freeze'
 ((inspect_line < candidate_freeze_line)) || fail 'unresolved state must be reconciled before a new candidate is frozen'
+origin_fetch_line="$(grep -nF 'git fetch --quiet origin main' "$deploy" | head -n1 | cut -d: -f1)"
+[[ -n "$origin_fetch_line" ]] || fail 'Production candidate authorization must still verify origin/main'
+((inspect_line < origin_fetch_line)) || fail 'interruption recovery must not depend on origin availability after PREPARED'
 grep -Fq -- 'read-accepted-record.yml' "$deploy" || fail 'deployment must resolve previous accepted state before mutation'
 grep -Fq -- 'homelab_tooling_commit' "$deploy" || fail 'deployment must carry an independent tooling commit'
 grep -Fq -- 'homelab_previous_release_root' "$deploy" || fail 'deployment must pass a frozen previous accepted payload'
