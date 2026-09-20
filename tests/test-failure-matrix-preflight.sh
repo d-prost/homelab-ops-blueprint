@@ -63,7 +63,7 @@ p.write_text(yaml.safe_dump(model,sort_keys=False))
 PY
 git -C "$fixture" add stacks/dozzle/stack.yml
 git -C "$fixture" commit -qm invalid-contract
-expect_refusal invalid-contract "unsafe target directory"
+expect_refusal invalid-contract "outside the allowed target roots"
 reset_fixture
 
 printf 'compose.yaml\t/opt/homelab-ops/stacks/dozzle/wrong-name.yml\n' >"$fixture/stacks/dozzle/MANIFEST.tsv"
