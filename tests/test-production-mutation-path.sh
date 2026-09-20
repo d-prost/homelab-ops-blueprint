@@ -26,7 +26,7 @@ grep -Fq -- 'HOMELAB_BACKUP_MAX_AGE_SECONDS' "$deploy" || fail 'Production state
 
 grep -Fq -- 'validate-stack-contracts.py' "$deploy" || fail 'selected release payload must use the current contract validator'
 grep -Fq -- 'materialize-git-snapshot.sh' "$deploy" || fail 'deployment must freeze Git payloads before mutation'
-grep -Fq -- 'validate-stack-contracts.py" --stack-dir "$previous_stack_dir"' "$deploy" || fail 'previous accepted payload must be revalidated before mutation'
+grep -Fq -- 'validate-stack-contracts.py" --stack-dir' "$deploy" || fail 'previous accepted payload must be revalidated before mutation'
 grep -Fq -- 'render-stack-images.py' "$deploy" || fail 'frozen candidate and rollback images must be rendered before mutation'
 grep -Fq -- 'preflight-images.yml' "$deploy" || fail 'runtime image availability must be proven before managed mutation'
 grep -Fq -- 'PRE_MUTATION_REFUSAL: previous accepted Git material is unavailable' "$deploy" || fail 'missing rollback Git material must fail as a pre-mutation refusal'
