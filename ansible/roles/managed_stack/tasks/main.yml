@@ -53,6 +53,8 @@
       - >-
         (stack_previous_contract_available | bool and
          homelab_previous_record_id | length == 64 and
+         homelab_previous_record_source is defined and
+         homelab_previous_record_source | length > 0 and
          homelab_previous_release_root | length > 0)
         or
         (not (stack_previous_contract_available | bool) and
@@ -283,6 +285,26 @@
         backup: false
       when: stack_rollback_available | bool
 
+    - name: Stage previous accepted record for interruption recovery
+      ansible.builtin.copy:
+        src: "{{ homelab_previous_record_source }}"
+        dest: "{{ stack_rollback_dir }}/previous.record"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+      when: stack_rollback_available | bool
+
+    - name: Stage candidate contract before managed mutation
+      ansible.builtin.copy:
+        src: "{{ stack_source_dir }}/stack.yml"
+        dest: "{{ stack_candidate_dir }}/stack.yml"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+      when: not ansible_check_mode
+
     - name: Stage unresolved transaction marker
       ansible.builtin.copy:
         dest: "{{ stack_candidate_dir }}/transaction.unresolved"
@@ -294,8 +316,9 @@
           transaction_id={{ homelab_transaction_id }}
           stack={{ stack_name }}
           candidate_commit={{ homelab_release_commit }}
+          previous_accepted_commit={{ homelab_previous_accepted_commit }}
           previous_record_id={{ homelab_previous_record_id }}
-          mutation_started=true
+          phase=MUTATING
       when: not ansible_check_mode
 
     - name: Commit unresolved transaction marker durably before mutation
@@ -361,16 +384,6 @@
         fail_msg: One or more expected Compose services are not running.
       when: not ansible_check_mode
 
-    - name: Stage current contract for remote functional verification
-      ansible.builtin.copy:
-        src: "{{ stack_source_dir }}/stack.yml"
-        dest: "{{ stack_candidate_dir }}/stack.yml"
-        owner: root
-        group: root
-        mode: "0600"
-        backup: false
-      when: not ansible_check_mode
-
     - name: Run functional stack verification on the target
       # The verifier needs the target Docker daemon. The script module transfers
       # it, while the contract is staged above, so no target checkout is needed.
@@ -388,6 +401,34 @@
     - name: Mark candidate runtime as functionally verified
       ansible.builtin.set_fact:
         stack_runtime_verified: true
+      when: not ansible_check_mode
+
+    - name: Stage acceptance-pending transaction marker
+      ansible.builtin.copy:
+        dest: "{{ stack_candidate_dir }}/transaction.acceptance-pending"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: |
+          transaction_id={{ homelab_transaction_id }}
+          stack={{ stack_name }}
+          candidate_commit={{ homelab_release_commit }}
+          previous_accepted_commit={{ homelab_previous_accepted_commit }}
+          previous_record_id={{ homelab_previous_record_id }}
+          phase=ACCEPTANCE_PENDING
+      when: not ansible_check_mode
+
+    - name: Commit acceptance-pending marker durably
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ stack_candidate_dir }}/transaction.acceptance-pending
+          --destination {{ stack_unresolved_marker }}
+          --mode 0600
+        executable: /usr/bin/python3
+      changed_when: true
       when: not ansible_check_mode
 
     - name: Create deployment record directory
@@ -439,6 +480,41 @@
       changed_when: true
       when: not ansible_check_mode
 
+    - name: Hash durable acceptance record for interruption proof
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/sha256sum
+          - "{{ homelab_deployment_record_dir }}/{{ stack_name }}.record"
+      register: stack_acceptance_record_hash
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Stage durable acceptance receipt
+      ansible.builtin.copy:
+        dest: "{{ stack_candidate_dir }}/acceptance.receipt"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: |
+          transaction_id={{ homelab_transaction_id }}
+          record_sha256={{ stack_acceptance_record_hash.stdout.split()[0] }}
+      when: not ansible_check_mode
+
+    - name: Commit durable acceptance receipt
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ stack_candidate_dir }}/acceptance.receipt
+          --destination {{ homelab_deployment_record_dir }}/{{ stack_name }}.receipt
+          --mode 0640
+        executable: /usr/bin/python3
+      register: stack_acceptance_receipt_commit
+      changed_when: stack_acceptance_receipt_commit.rc == 0
+      failed_when: false
+      when: not ansible_check_mode
+
     - name: Report durable acceptance
       ansible.builtin.debug:
         msg: >-
@@ -456,7 +532,12 @@
       register: stack_marker_cleanup
       changed_when: stack_marker_cleanup.rc == 0
       failed_when: false
-      when: not ansible_check_mode
+      when:
+        - not ansible_check_mode
+        - not (
+            homelab_environment == 'lab'
+            and lookup('env', 'HOMELAB_LAB_STALE_MARKER_TEST') == '1'
+          )
 
     - name: Warn when an accepted transaction leaves a stale marker
       ansible.builtin.debug:
@@ -466,9 +547,45 @@
           the marker is reconciled manually.
       when:
         - not ansible_check_mode
-        - stack_marker_cleanup.rc | default(0) != 0
+        - >-
+          stack_marker_cleanup.rc | default(1) != 0
+          or
+          (
+            homelab_environment == 'lab'
+            and lookup('env', 'HOMELAB_LAB_STALE_MARKER_TEST') == '1'
+          )
 
   rescue:
+    - name: Stage explicit acceptance-persistence failure marker
+      ansible.builtin.copy:
+        dest: "{{ stack_candidate_dir }}/transaction.acceptance-failed"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: |
+          transaction_id={{ homelab_transaction_id }}
+          stack={{ stack_name }}
+          candidate_commit={{ homelab_release_commit }}
+          previous_accepted_commit={{ homelab_previous_accepted_commit }}
+          previous_record_id={{ homelab_previous_record_id }}
+          phase=ACCEPTANCE_PERSISTENCE_FAILED
+      failed_when: false
+      when: stack_runtime_verified | default(false) | bool
+
+    - name: Commit explicit acceptance-persistence failure marker
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ stack_candidate_dir }}/transaction.acceptance-failed
+          --destination {{ stack_unresolved_marker }}
+          --mode 0600
+        executable: /usr/bin/python3
+      failed_when: false
+      changed_when: false
+      when: stack_runtime_verified | default(false) | bool
+
     - name: Fail closed when acceptance persistence fails after runtime verification
       ansible.builtin.fail:
         msg: >-
@@ -498,6 +615,38 @@
           target exists. Original failure:
           {{ ansible_failed_result.msg | default(ansible_failed_result) }}
       when: not (stack_rollback_available | default(false) | bool)
+
+    - name: Stage restoring transaction marker
+      ansible.builtin.copy:
+        dest: "{{ stack_rollback_dir }}/transaction.restoring"
+        owner: root
+        group: root
+        mode: "0600"
+        backup: false
+        content: |
+          transaction_id={{ homelab_transaction_id }}
+          stack={{ stack_name }}
+          candidate_commit={{ homelab_release_commit }}
+          previous_accepted_commit={{ homelab_previous_accepted_commit }}
+          previous_record_id={{ homelab_previous_record_id }}
+          phase=RESTORING
+      when:
+        - stack_mutation_started | default(false) | bool
+        - stack_rollback_available | default(false) | bool
+
+    - name: Commit restoring marker before rollback mutation
+      ansible.builtin.script:
+        cmd: >-
+          {{ homelab_repo_root }}/scripts/durable-state-file.py
+          commit
+          --source {{ stack_rollback_dir }}/transaction.restoring
+          --destination {{ stack_unresolved_marker }}
+          --mode 0600
+        executable: /usr/bin/python3
+      changed_when: true
+      when:
+        - stack_mutation_started | default(false) | bool
+        - stack_rollback_available | default(false) | bool
 
     - name: Restore prior managed files
       ansible.builtin.copy:
