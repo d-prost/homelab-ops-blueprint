@@ -31,7 +31,7 @@ The external-test item is an evidence goal, not a popularity threshold. Stars an
 ## Next
 
 - add more unit tests around stack-contract and functional-check parsing;
-- execute and publish the public-safe evidence from `docs/REMOTE_SSH_PROOF.md` on a genuinely separate SSH target;
+- repeat the [first separate-target SSH proof](docs/evidence/REMOTE_SSH_PROOF_2026-09-27.md) after material changes to the transaction path;
 - cover more failure cases around invalid manifests, target mismatches, failed health checks and incomplete rollback state;
 - collect at least one external clean-host or remote-target evaluation report when available;
 - prepare the first stable release once those paths have been exercised consistently.
@@ -41,6 +41,9 @@ The external-test item is an evidence goal, not a popularity threshold. Stars an
 The repository should remain easy to evaluate without access to a private HomeLab. The public evaluation path is documented in [`docs/EVALUATION.md`](docs/EVALUATION.md).
 
 Useful external evidence includes successful clean-host validation, a disposable deployment report, a remote-target report, or a reproducible bug report. Public evidence must stay environment-neutral and must not contain private hostnames, addresses, credentials, backup identifiers, deployment receipts or recovery evidence.
+
+The first clean-host evaluation and separate-target SSH transaction proof are
+recorded in [the 2026-09-27 evidence report](docs/evidence/REMOTE_SSH_PROOF_2026-09-27.md).
 
 ## Deployment records
 

@@ -31,6 +31,7 @@ def write_yaml(path: Path, data: object) -> None:
 def write_json(path: Path, data: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
+    path.chmod(0o600)
 
 
 def expect_error(module, callback, text: str) -> None:

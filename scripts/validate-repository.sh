@@ -20,6 +20,7 @@ python3 tests/test-target-lock-key.py
 python3 tests/test-durable-state-file.py
 python3 tests/test-transaction-state-classification.py
 python3 tests/test-main-ruleset-policy.py
+bash tests/test-remote-proof-facts.sh
 bash tests/test-failure-matrix-preflight.sh
 bash tests/test-integrity-guards.sh
 bash tests/test-production-mutation-path.sh

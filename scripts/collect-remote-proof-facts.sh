@@ -37,6 +37,7 @@ done
 
 export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
 export ANSIBLE_HOST_KEY_CHECKING=True
+export ANSIBLE_DEPRECATION_WARNINGS=False
 
 python3 - "$inventory" <<'PY'
 import json
@@ -65,21 +66,43 @@ if not values.get("homelab_expected_hostname"):
 print("Inventory policy: PASS (one separate SSH lab target)")
 PY
 
-ansible-playbook -i "$inventory" "$repo_root/ansible/playbooks/preflight.yml"   -e stack_name=dozzle   -e "homelab_repo_root=$repo_root"   -e "homelab_release_root=$repo_root" >/dev/null
+if ! ansible-playbook -i "$inventory" "$repo_root/ansible/playbooks/preflight.yml" \
+  -e stack_name=dozzle \
+  -e "homelab_repo_root=$repo_root" \
+  -e "homelab_release_root=$repo_root" >/dev/null 2>&1; then
+  printf 'ERROR: remote target preflight failed; inspect private Ansible output locally.\n' >&2
+  exit 1
+fi
 
 printf 'Target identity + Docker preflight: PASS\n'
 printf 'Topology: separate SSH target\n'
 printf 'Control Ansible: '
-ansible --version | head -n1 | sed -E 's/\[[^]]*\]//g'
+ansible-playbook --version | head -n1
 
-printf 'Target OS: '
-ansible all -i "$inventory" -b -m ansible.builtin.shell   -a ". /etc/os-release && printf '%s %s' \"\$NAME\" \"\$VERSION_ID\""   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
+run_fact() {
+  local label="$1"
+  shift
+  local output value
+  if ! output="$(ansible all -i "$inventory" -b "$@" -o 2>&1)"; then
+    printf 'ERROR: %s fact query failed; inspect private Ansible output locally.\n' "$label" >&2
+    return 1
+  fi
+  value="$(printf '%s\n' "$output" | sed -n \
+    -e 's/^.*(stdout) //p' \
+    -e 's/^[^|]*|[^>]*>>[[:space:]]*//p' | tail -n1)"
+  [[ -n "$value" ]] || {
+    printf 'ERROR: %s fact query returned no value.\n' "$label" >&2
+    return 1
+  }
+  printf '%s: %s\n' "$label" "$value"
+}
 
-printf 'Docker Engine: '
-ansible all -i "$inventory" -b -m ansible.builtin.command   -a '/usr/bin/docker version --format {{.Server.Version}}'   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
-
-printf 'Docker Compose: '
-ansible all -i "$inventory" -b -m ansible.builtin.command   -a '/usr/bin/docker compose version --short'   -o | sed -E 's/^[^|]+\|[^>]+>>[[:space:]]*//' | tail -n1
+run_fact 'Target OS' -m ansible.builtin.shell \
+  -a ". /etc/os-release && printf '%s %s' \"\$NAME\" \"\$VERSION_ID\""
+run_fact 'Docker Engine' -m ansible.builtin.command \
+  -a '/usr/bin/docker version --format {% raw %}{{.Server.Version}}{% endraw %}'
+run_fact 'Docker Compose' -m ansible.builtin.command \
+  -a '/usr/bin/docker compose version --short'
 
 printf 'Repository commit: %s\n' "$(git rev-parse HEAD)"
 printf 'Readiness collection complete. This is not the transaction proof; execute docs/REMOTE_SSH_PROOF.md before closing issue #35.\n'

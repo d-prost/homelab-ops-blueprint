@@ -6,6 +6,10 @@ It does **not** count as proof by itself. The issue is complete only after the
 steps are executed against a genuinely separate disposable or non-critical SSH
 target and the resulting public-safe evidence is recorded.
 
+The first separate-target run is recorded in
+[`docs/evidence/REMOTE_SSH_PROOF_2026-09-27.md`](evidence/REMOTE_SSH_PROOF_2026-09-27.md).
+Keep private inventory and raw Ansible logs outside this repository.
+
 ## Boundary
 
 The proof target must be separate from the control host.
