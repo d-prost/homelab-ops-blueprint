@@ -75,8 +75,8 @@ Once the single-host path has enough real-world coverage:
 
 These are useful only if there is a real need for them:
 
-- deterministic hashes for more deployment artifacts;
-- optional signing of deployment records;
+- repeat deterministic managed-file hashing against copied remote snapshots;
+- exercise optional operator signatures on copied accepted records with independent key custody;
 - independent verification against Git history;
-- reusable validation tooling for other repositories;
-- drift reporting that reports differences without automatically changing Production.
+- exercise the external `--stack-dir --json` validator with another repository's stack;
+- extend the read-only configuration drift report with optional live functional checks, without automatic Production changes.

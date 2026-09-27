@@ -16,6 +16,11 @@ sudo test ! -e "$marker_file"
 sudo test ! -e "$result_file"
 bash scripts/deploy-stack.sh dozzle --inventory lab
 sudo grep -Fq '"result":"ACCEPTED"' "$result_file"
+sudo env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$repo_root" \
+  python3 scripts/report-config-drift.py --record "$record_file" \
+  --receipt "$receipt_file" --snapshot-root / --repo "$repo_root" \
+  --history-ref HEAD >"$tmp_root/drift.log"
+grep -Fq 'MATCH: accepted configuration' "$tmp_root/drift.log"
 before_compose="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"; before_defaults="$(sudo sha256sum "$target_dir/defaults.env" | awk '{print $1}')"
 git archive HEAD | tar -x -C "$tmp_root"
 python3 - "$tmp_root/stacks/dozzle" <<'PY_INNER'

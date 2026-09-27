@@ -28,6 +28,9 @@ The project follows Semantic Versioning once tagged public releases begin.
 - a public-safe report of a real separate-target SSH deployment and verified rollback.
 - explicit stateful data, secret-handling, export/restore-format, and schema-sensitive rollback declarations;
 - a schema-sensitive compatibility evidence gate and regression cases.
+- read-only manifest-managed file drift reporting against accepted Git payload bytes.
+- optional OpenSSH signatures for copied accepted records, with exact-byte verification.
+- machine-readable stack-contract validation for external stack directories.
 
 ### Changed
 

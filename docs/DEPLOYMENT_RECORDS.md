@@ -53,3 +53,54 @@ unavailable Git object or ref is `UNVERIFIABLE`; a contradictory value is
 independently prove that the service was healthy at deployment time; it only
 checks the stored verifier result ID's shape and the record's Git and receipt
 bindings. Keep the original private runtime evidence for that claim.
+
+## Read-only configuration drift report
+
+Copy the accepted record and the complete managed stack directory into a
+private snapshot root that preserves absolute target paths. For example,
+`/private/snapshot/opt/homelab-ops/stacks/dozzle/` should contain the copied
+managed files. Then run:
+
+```bash
+python3 scripts/report-config-drift.py \
+  --record /private/dozzle.record \
+  --receipt /private/dozzle.receipt \
+  --snapshot-root /private/snapshot \
+  --repo /path/to/homelab-ops-blueprint \
+  --history-ref origin/main --json
+```
+
+The report first checks the accepted record against local Git history. It then
+compares each manifest-managed target file byte for byte, publishing stable
+SHA-256 values and `MATCH`, `DIFFERENT`, `MISSING`, or `UNSAFE`. It reads only
+the copied snapshot and local Git objects. The snapshot, receipt and output
+remain private. Extra files outside the accepted manifest and the current
+Docker process state are not classified; `current_runtime` is always
+`NOT_CHECKED`. A historical acceptance record is not a current health claim.
+
+## Optional operator signature
+
+An operator can sign an exact copy of the accepted record after deployment.
+Keep the signing key, signature and allowed-signers file outside the public
+repository. The key remains on the trusted control host and never reaches the
+target:
+
+```bash
+python3 scripts/sign-deployment-record.py sign \
+  --record /private/dozzle.record \
+  --key /private/operator-ed25519 \
+  --output /private/dozzle.record.sig
+
+python3 scripts/sign-deployment-record.py verify \
+  --record /private/dozzle.record \
+  --signature /private/dozzle.record.sig \
+  --allowed-signers /private/allowed_signers \
+  --identity operator
+```
+
+The allowed-signers file uses the OpenSSH format, for example
+`operator ssh-ed25519 AAAA...`. Verification binds the signer identity and exact
+record bytes to the fixed `homelab-ops-blueprint-record` namespace. A changed
+record or untrusted signer fails. Signatures are optional evidence; they do not
+change the target's acceptance commit point, verify current runtime health, or
+replace the receipt and Git-history comparison.

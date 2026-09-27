@@ -155,6 +155,20 @@ Use a GitHub Issue for reproducible defects or a Discussion for general adoption
 
 For services with persistent application data, first define the `operations:` section in `stack.yml` and work through [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
 
+The contract validator also accepts an explicit stack directory outside this
+checkout, so another repository can reuse the same manifest, image and
+functional-check rules without copying this deployment control plane:
+
+```bash
+python3 scripts/validate-stack-contracts.py \
+  --stack-dir /path/to/another-repository/stacks/example --json
+```
+
+The JSON result names validated stacks and reports `PASS`. Invalid contracts
+exit nonzero with a specific diagnostic. Stateful contracts need Docker Compose
+available for canonical mount checks. This validates the public stack contract;
+it does not authorize deployment to any target.
+
 The Production readiness check expects:
 
 ```bash

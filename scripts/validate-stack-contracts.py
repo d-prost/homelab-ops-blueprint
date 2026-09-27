@@ -5,6 +5,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -362,6 +363,7 @@ def main() -> int:
         default=[],
         help="validate only this stack directory; may be supplied more than once",
     )
+    parser.add_argument("--json", action="store_true", help="emit a machine-readable validation result")
     args = parser.parse_args()
 
     if args.stack_dir:
@@ -373,9 +375,20 @@ def main() -> int:
         raise ContractError("no managed stack contracts found")
     for stack_dir in managed:
         validate_stack(stack_dir)
-    print(f"Validated {len(managed)} managed stack contract(s).")
+    if args.json:
+        print(json.dumps({
+            "schema_version": 1,
+            "status": "PASS",
+            "validated_stacks": sorted(path.name for path in managed),
+        }, sort_keys=True))
+    else:
+        print(f"Validated {len(managed)} managed stack contract(s).")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (ContractError, OSError, yaml.YAMLError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)
