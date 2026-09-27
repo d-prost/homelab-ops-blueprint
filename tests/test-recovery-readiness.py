@@ -76,12 +76,17 @@ def make_stack(stack_dir: Path) -> dict:
             "services": {
                 "db": {
                     "stateful": True,
-                    "persistent_mounts": [{"target": "/var/lib/example"}],
-                    "backup": {"policy": "critical"},
+                    "persistent_mounts": [{"target": "/var/lib/example", "data_class": "application-data"}],
+                    "secrets": {"handling": "external"},
+                    "backup": {"policy": "critical", "export": {
+                        "format": "archive", "runbook": "recovery/example.md",
+                    }},
                     "restore": {
                         "runbook": "recovery/example.md",
                         "verification": "functional",
+                        "format": "archive",
                     },
+                    "rollback": {"schema_sensitive": True},
                     "monitoring": {"required": True},
                 }
             }
@@ -91,6 +96,13 @@ def make_stack(stack_dir: Path) -> dict:
 
 def make_evidence(module, stack_path: Path, observed_at: str = FRESH) -> dict:
     contract = module.recovery_proof_contract(stack_path)
+    schema_sensitive = any(
+        service["rollback"]["schema_sensitive"]
+        for service in contract["services"].values()
+    )
+    rollback = {"configuration_rollback_safe": True}
+    if schema_sensitive:
+        rollback["schema_change_tested"] = True
     return {
         "schema_version": 1,
         "contract_hash": module.contract_hash(contract),
@@ -102,7 +114,7 @@ def make_evidence(module, stack_path: Path, observed_at: str = FRESH) -> dict:
             "production_unchanged": True,
         },
         "recovery_objectives": {"rpo_met": True, "rto_met": True},
-        "rollback_compatibility": {"configuration_rollback_safe": True},
+        "rollback_compatibility": rollback,
         "backup_receipt": {"observed_at": observed_at},
     }
 
@@ -244,6 +256,23 @@ def main() -> int:
             "rollback_compatibility.configuration_rollback_safe must be true",
         )
 
+        schema_untested = make_evidence(module, stack_path)
+        schema_untested["rollback_compatibility"]["schema_change_tested"] = False
+        write_json(evidence_path, schema_untested)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, evidence_path, public_root),
+            "rollback_compatibility.schema_change_tested must be true",
+        )
+        schema_missing = make_evidence(module, stack_path)
+        del schema_missing["rollback_compatibility"]["schema_change_tested"]
+        write_json(evidence_path, schema_missing)
+        expect_error(
+            module,
+            lambda: validate(module, stack_path, evidence_path, public_root),
+            "missing required field(s): schema_change_tested",
+        )
+
         incomplete_coverage = make_evidence(module, stack_path)
         incomplete_coverage["covered_services"] = ["other"]
         write_json(evidence_path, incomplete_coverage)
@@ -296,6 +325,12 @@ def main() -> int:
             module.recovery_proof_contract(stack_path)
         )
         assert before_monitoring == after_monitoring
+
+        before_export = module.contract_hash(module.recovery_proof_contract(stack_path))
+        (stack_dir / "recovery" / "example.md").write_text(
+            "# Revised export and restore runbook\n", encoding="utf-8"
+        )
+        assert before_export != module.contract_hash(module.recovery_proof_contract(stack_path))
 
         stack["operations"]["services"]["db"]["monitoring"]["required"] = True
         write_yaml(stack_path, stack)

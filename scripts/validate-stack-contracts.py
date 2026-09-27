@@ -274,10 +274,22 @@ def validate_operational_coverage(stack_dir: Path) -> dict:
                 raise ContractError(
                     f"{stack}:{service_name}: persistent mount {target} is not present in canonical Compose mounts"
                 )
+            if mount.get("data_class") != "application-data":
+                raise ContractError(f"{stack}:{service_name}: persistent mount data_class must be application-data")
             persistent_storage.append(target)
 
+        secrets = require_mapping(service_ops.get("secrets"), f"{stack}:{service_name}:secrets")
+        if set(secrets) != {"handling"} or secrets.get("handling") not in {"none", "external"}:
+            raise ContractError(f"{stack}:{service_name}: secrets.handling must be none or external")
         backup = require_mapping(service_ops.get("backup"), f"{stack}:{service_name}:backup")
         backup_policy = _required_identifier(backup, "policy", f"{stack}:{service_name}:backup policy")
+        export = require_mapping(backup.get("export"), f"{stack}:{service_name}:backup export")
+        export_format = _required_identifier(export, "format", f"{stack}:{service_name}:export format")
+        export_runbook = safe_relative_file(
+            export.get("runbook"), f"{stack}:{service_name}:export runbook"
+        )
+        if not (stack_dir / export_runbook).is_file():
+            raise ContractError(f"{stack}:{service_name}: export runbook does not exist: {export_runbook}")
         restore = require_mapping(service_ops.get("restore"), f"{stack}:{service_name}:restore")
         restore_runbook = safe_relative_file(
             restore.get("runbook"), f"{stack}:{service_name}:restore runbook"
@@ -287,6 +299,11 @@ def validate_operational_coverage(stack_dir: Path) -> dict:
         restore_verification = _required_identifier(
             restore, "verification", f"{stack}:{service_name}:restore verification"
         )
+        if restore.get("format") != export_format:
+            raise ContractError(f"{stack}:{service_name}: restore format must match export format")
+        rollback = require_mapping(service_ops.get("rollback"), f"{stack}:{service_name}:rollback")
+        if set(rollback) != {"schema_sensitive"} or not isinstance(rollback.get("schema_sensitive"), bool):
+            raise ContractError(f"{stack}:{service_name}: rollback.schema_sensitive must be boolean")
         monitoring = require_mapping(service_ops.get("monitoring"), f"{stack}:{service_name}:monitoring")
         monitoring_required = monitoring.get("required")
         if not isinstance(monitoring_required, bool):
@@ -298,9 +315,13 @@ def validate_operational_coverage(stack_dir: Path) -> dict:
                 "service": service_name,
                 "stateful": True,
                 "persistent_storage": persistent_storage,
+                "secrets_handling": secrets["handling"],
                 "backup_policy": backup_policy,
+                "export_format": export_format,
+                "export_runbook": export_runbook,
                 "restore_runbook": restore_runbook,
                 "restore_verification": restore_verification,
+                "schema_sensitive": rollback["schema_sensitive"],
                 "monitoring_required": monitoring_required,
                 "provenance": {
                     "service": _coverage_evidence(base, f"services.{service_name}"),
@@ -316,8 +337,12 @@ def validate_operational_coverage(stack_dir: Path) -> dict:
                         for index, target in enumerate(persistent_storage)
                     ],
                     "backup_policy": _coverage_evidence(f"{base}.backup.policy"),
+                    "secrets_handling": _coverage_evidence(f"{base}.secrets.handling"),
+                    "export_format": _coverage_evidence(f"{base}.backup.export.format"),
+                    "export_runbook": _coverage_evidence(f"{base}.backup.export.runbook"),
                     "restore_runbook": _coverage_evidence(f"{base}.restore.runbook"),
                     "restore_verification": _coverage_evidence(f"{base}.restore.verification"),
+                    "schema_sensitive": _coverage_evidence(f"{base}.rollback.schema_sensitive"),
                     "monitoring_required": _coverage_evidence(f"{base}.monitoring.required"),
                 },
             }

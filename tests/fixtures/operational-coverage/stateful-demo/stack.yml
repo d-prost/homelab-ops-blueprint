@@ -5,10 +5,19 @@ operations:
       stateful: true
       persistent_mounts:
         - target: /var/lib/example
+          data_class: application-data
+      secrets:
+        handling: external
       backup:
         policy: critical
+        export:
+          format: archive
+          runbook: recovery/example.md
       restore:
         runbook: recovery/example.md
         verification: functional
+        format: archive
+      rollback:
+        schema_sensitive: true
       monitoring:
         required: true

@@ -34,6 +34,7 @@ The hash includes recovery-relevant parts of the stack, including:
 
 - the stack name;
 - stateful storage, backup and restore declarations;
+- explicit application-data mounts, secret-handling class, export format and runbook, restore format and runbook, and schema-sensitive rollback declaration;
 - expected services and functional checks;
 - the managed-file contract;
 - hashes of managed payload files;
@@ -72,6 +73,15 @@ The current schema is:
 The schema is strict and unknown fields are rejected. The file contains only the values needed by the deployment check; the underlying backup and restore records can stay with the system that produced them.
 
 `configuration_rollback_safe` is separate from restore success. A restore can work while returning to the previous application version would still be unsafe because of a schema or data-format change.
+
+When any stateful service declares `rollback.schema_sensitive: true`,
+`rollback_compatibility` must also contain `"schema_change_tested": true`. This
+records an explicit isolated compatibility test of the previous application
+configuration against the candidate data format. A bare safety assertion is
+insufficient for that class of change. Export and restore formats must match in
+the public contract, and the referenced runbooks are hashed into its generation
+identity. `secrets.handling` is a declaration of `none` or `external`; the public
+contract never contains secret values or private secret locations.
 
 The readiness file must be a regular file outside the repository checkout and must not be group- or world-writable.
 

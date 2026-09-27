@@ -248,7 +248,7 @@ For a short reviewer/adopter path that does not touch an existing Production env
 
 ## Project status
 
-The single-host stateless deployment path and disposable rollback test are implemented, with Dozzle and Nginx as separate public reference stacks. Remote targets work without a Git checkout on the target, although the project still needs more real-world remote-host coverage. Stateful readiness support is in place, while richer stateful declarations, a complete synthetic stateful example and multi-host deployment are still planned.
+The single-host stateless deployment path and disposable rollback test are implemented, with Dozzle and Nginx as separate public reference stacks. A separate-target SSH proof and synthetic Redis export/restore proof are recorded under `docs/evidence/`. Stateful readiness declarations now cover data, secret handling, export/restore format and schema-sensitive rollback. Serial/canary group rollout is available with per-host results; its multi-target SSH behavior still needs an independent disposable proof.
 
 The project is intentionally conservative about claims of support: functionality moves out of the roadmap only after it has a reproducible proof or enough real-world coverage to justify the claim.
 

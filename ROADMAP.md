@@ -57,7 +57,7 @@ The current deployment record is intentionally small. I would like to make it mo
 
 The first readiness gate is implemented, but stateful adoption still needs more work:
 
-- improve declarations for data, secrets, exports and restore procedures;
+- exercise the explicit data, secret-handling, export and restore declarations with a second stateful application shape;
 - repeat the [first synthetic Redis recovery proof](docs/evidence/STATEFUL_REDIS_PROOF_2026-09-27.md) after material recovery-path changes;
 - expand tests around schema-sensitive changes and rollback compatibility;
 - refine the readiness evidence format as real usage exposes gaps.

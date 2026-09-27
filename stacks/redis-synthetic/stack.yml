@@ -21,10 +21,19 @@ operations:
       stateful: true
       persistent_mounts:
         - target: /data
+          data_class: application-data
+      secrets:
+        handling: none
       backup:
         policy: synthetic-rdb
+        export:
+          format: rdb
+          runbook: recovery/README.md
       restore:
         runbook: recovery/README.md
         verification: redis-get
+        format: rdb
+      rollback:
+        schema_sensitive: false
       monitoring:
         required: false

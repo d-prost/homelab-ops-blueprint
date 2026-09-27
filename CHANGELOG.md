@@ -26,6 +26,8 @@ The project follows Semantic Versioning once tagged public releases begin.
   isolated restore, representative content verification, and measured recovery timings;
 - a Redis PING functional check and required CI recovery proof;
 - a public-safe report of a real separate-target SSH deployment and verified rollback.
+- explicit stateful data, secret-handling, export/restore-format, and schema-sensitive rollback declarations;
+- a schema-sensitive compatibility evidence gate and regression cases.
 
 ### Changed
 

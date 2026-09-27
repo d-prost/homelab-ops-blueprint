@@ -16,9 +16,13 @@ EXPECTED_PROVENANCE = {
     "service",
     "stateful",
     "persistent_storage",
+    "secrets_handling",
     "backup_policy",
+    "export_format",
+    "export_runbook",
     "restore_runbook",
     "restore_verification",
+    "schema_sensitive",
     "monitoring_required",
 }
 
@@ -109,8 +113,12 @@ def main() -> int:
     assert service["stateful"] is True
     assert service["persistent_storage"] == ["/var/lib/example"]
     assert service["backup_policy"] == "critical"
+    assert service["secrets_handling"] == "external"
+    assert service["export_format"] == "archive"
+    assert service["export_runbook"] == "recovery/example.md"
     assert service["restore_runbook"] == "recovery/example.md"
     assert service["restore_verification"] == "functional"
+    assert service["schema_sensitive"] is True
     assert service["monitoring_required"] is True
     assert_provenance(report)
     assert_operations_opt_in(module)
@@ -168,9 +176,42 @@ def main() -> int:
         "monitoring must be a mapping",
     )
 
+    expect_contract_error(
+        module,
+        lambda stack: mutate_contract(
+            stack,
+            lambda data: data["operations"]["services"]["demo"]["persistent_mounts"][0].pop("data_class"),
+        ),
+        "data_class must be application-data",
+    )
+    expect_contract_error(
+        module,
+        lambda stack: mutate_contract(
+            stack,
+            lambda data: data["operations"]["services"]["demo"]["secrets"].update({"handling": "inline"}),
+        ),
+        "secrets.handling must be none or external",
+    )
+    expect_contract_error(
+        module,
+        lambda stack: mutate_contract(
+            stack,
+            lambda data: data["operations"]["services"]["demo"]["restore"].update({"format": "other"}),
+        ),
+        "restore format must match export format",
+    )
+    expect_contract_error(
+        module,
+        lambda stack: mutate_contract(
+            stack,
+            lambda data: data["operations"]["services"]["demo"]["rollback"].update({"schema_sensitive": "yes"}),
+        ),
+        "rollback.schema_sensitive must be boolean",
+    )
+
     print(
         "Operational coverage tests passed: opt-in routing, 1 stateful service, "
-        "7/7 provenance fields, 6 rejection cases."
+        "11/11 provenance fields, 10 rejection cases."
     )
     return 0
 

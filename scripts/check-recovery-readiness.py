@@ -90,8 +90,10 @@ def stateful_services(stack: dict) -> dict[str, dict]:
             continue
         selected[name] = {
             "persistent_mounts": service.get("persistent_mounts"),
+            "secrets": service.get("secrets"),
             "backup": service.get("backup"),
             "restore": service.get("restore"),
+            "rollback": service.get("rollback"),
         }
     return selected
 
@@ -120,6 +122,14 @@ def recovery_proof_contract(stack_path: Path) -> dict:
 
     restore_runbook_sha256: dict[str, str] = {}
     for service_name, service in services.items():
+        backup = require_mapping(service.get("backup"), f"{service_name}.backup")
+        export = require_mapping(backup.get("export"), f"{service_name}.backup.export")
+        export_runbook = safe_relative_file(
+            export.get("runbook"), f"{service_name}.backup.export.runbook"
+        )
+        restore_runbook_sha256[export_runbook] = file_sha256(
+            stack_dir / export_runbook, f"export runbook {export_runbook}"
+        )
         restore = require_mapping(service.get("restore"), f"{service_name}.restore")
         runbook = safe_relative_file(
             restore.get("runbook"), f"{service_name}.restore.runbook"
@@ -289,14 +299,21 @@ def validate_evidence(
     rollback = require_mapping(
         evidence.get("rollback_compatibility"), "rollback_compatibility"
     )
+    schema_sensitive = any(
+        require_mapping(service.get("rollback"), f"{name}.rollback").get("schema_sensitive") is True
+        for name, service in contract["services"].items()
+    )
+    rollback_fields = {"configuration_rollback_safe"}
+    if schema_sensitive:
+        rollback_fields.add("schema_change_tested")
     require_exact_keys(
         rollback,
-        {"configuration_rollback_safe"},
+        rollback_fields,
         "rollback_compatibility",
     )
     require_true_fields(
         rollback,
-        ("configuration_rollback_safe",),
+        tuple(sorted(rollback_fields)),
         "rollback_compatibility",
     )
 
