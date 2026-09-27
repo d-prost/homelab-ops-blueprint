@@ -443,8 +443,22 @@
           --compose-file {{ stack_compose_dest }}
           --env-file defaults.env
           --contract {{ stack_candidate_dir }}/stack.yml
+          --json
         executable: /usr/bin/python3
+      register: stack_verification_result
       changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require structured successful verification evidence
+      ansible.builtin.assert:
+        that:
+          - (stack_verification_result.stdout | from_json).schema_version == 1
+          - (stack_verification_result.stdout | from_json).checks | length == stack_functional_checks | length
+          - >-
+            (stack_verification_result.stdout | from_json).checks
+            | selectattr('status', 'equalto', 'PASS') | list | length
+            == stack_functional_checks | length
+        fail_msg: Runtime verifier did not return complete successful JSON evidence.
       when: not ansible_check_mode
 
     - name: Mark candidate runtime as functionally verified
@@ -497,18 +511,24 @@
         mode: "0600"
         backup: false
         content: |
+          schema_version=2
           stack={{ stack_name }}
           commit={{ homelab_release_commit }}
           tooling_commit={{ homelab_tooling_commit }}
           transaction_id={{ homelab_transaction_id }}
           contract_hash={{ homelab_contract_hash }}
           manifest_hash={{ homelab_manifest_hash }}
+          stack_contract_id=sha256:{{ homelab_contract_hash }}
+          manifest_id=sha256:{{ homelab_manifest_hash }}
           previous_commit={{ homelab_previous_accepted_commit }}
           previous_record_id={{ homelab_previous_record_id }}
           target={{ stack_target_dir }}
           target_hostname={{ homelab_expected_hostname }}
           target_machine_id={{ homelab_expected_machine_id | default('', true) }}
+          target_id=sha256:{{ (homelab_expected_hostname ~ '|' ~ (homelab_expected_machine_id | default('', true))) | hash('sha256') }}
           verified=functional
+          verification_result=PASS
+          verification_result_id=sha256:{{ stack_verification_result.stdout | trim | hash('sha256') }}
       when: not ansible_check_mode
 
     - name: Commit acceptance record atomically and durably

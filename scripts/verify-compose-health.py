@@ -39,7 +39,7 @@ def addresses(compose:list[str],service:str)->list[str]:
     out=[n.get("IPAddress") for n in record.get("NetworkSettings",{}).get("Networks",{}).values() if isinstance(n,dict) and n.get("IPAddress")]
     if not out: raise VerificationError(f"{service}: no IPv4 address")
     return list(dict.fromkeys(out))
-def verify(check:dict,addrs:list[str],attempts:int,delay:float)->None:
+def verify(check:dict,addrs:list[str],attempts:int,delay:float,quiet:bool=False)->dict:
     pattern=re.compile(check["body_regex"]) if check["body_regex"] else None; errors=[]
     for attempt in range(attempts):
         errors=[]
@@ -51,10 +51,11 @@ def verify(check:dict,addrs:list[str],attempts:int,delay:float)->None:
             except (urllib.error.URLError,TimeoutError,OSError) as exc: errors.append(f"{url}: {exc}"); continue
             if status not in check["status_codes"]: errors.append(f"{url}: HTTP {status}"); continue
             if pattern and pattern.search(body) is None: errors.append(f"{url}: body mismatch"); continue
-            print(f"PASS: {check['name']} service={check['service']} url={url} status={status}"); return
+            if not quiet: print(f"PASS: {check['name']} service={check['service']} url={url} status={status}")
+            return {"name":check["name"],"service":check["service"],"protocol":"http","status":"PASS","status_code":status}
         if attempt+1<attempts: time.sleep(delay)
     raise VerificationError(f"{check['name']}: failed: {'; '.join(errors)}")
-def verify_redis_ping(check:dict,addrs:list[str],attempts:int,delay:float)->None:
+def verify_redis_ping(check:dict,addrs:list[str],attempts:int,delay:float,quiet:bool=False)->dict:
     errors=[]
     for attempt in range(attempts):
         errors=[]
@@ -64,24 +65,27 @@ def verify_redis_ping(check:dict,addrs:list[str],attempts:int,delay:float)->None
                     connection.sendall(b"*1\r\n$4\r\nPING\r\n")
                     response=connection.makefile("rb").readline(8)
                 if response==b"+PONG\r\n":
-                    print(f"PASS: {check['name']} service={check['service']} protocol=redis-ping")
-                    return
+                    if not quiet: print(f"PASS: {check['name']} service={check['service']} protocol=redis-ping")
+                    return {"name":check["name"],"service":check["service"],"protocol":"redis-ping","status":"PASS"}
                 errors.append(f"{addr}: unexpected Redis PING response")
             except (OSError,TimeoutError) as exc: errors.append(f"{addr}: {exc}")
         if attempt+1<attempts: time.sleep(delay)
     raise VerificationError(f"{check['name']}: failed: {'; '.join(errors)}")
 def main()->int:
-    p=argparse.ArgumentParser(); p.add_argument("--stack-dir",type=Path,required=True); p.add_argument("--compose-file",required=True); p.add_argument("--env-file",required=True); p.add_argument("--contract",type=Path,required=True); p.add_argument("--project-name"); p.add_argument("--attempts",type=int,default=15); p.add_argument("--delay",type=float,default=2.0); a=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument("--stack-dir",type=Path,required=True); p.add_argument("--compose-file",required=True); p.add_argument("--env-file",required=True); p.add_argument("--contract",type=Path,required=True); p.add_argument("--project-name"); p.add_argument("--json",action="store_true"); p.add_argument("--attempts",type=int,default=15); p.add_argument("--delay",type=float,default=2.0); a=p.parse_args()
     contract=load_contract(a.contract); raw=contract.get("stack_functional_checks")
     if not isinstance(raw,list) or not raw: raise VerificationError("stack_functional_checks must be non-empty")
     compose=["/usr/bin/docker","compose","--env-file",str(a.stack_dir/a.env_file),"-f",str(a.stack_dir/a.compose_file)]
     if a.project_name: compose.extend(["-p",a.project_name])
+    results=[]
     for i,item in enumerate(raw,1):
         check=validate_check(item,i)
         service_addresses=addresses(compose,check["service"])
-        if check["protocol"]=="redis-ping": verify_redis_ping(check,service_addresses,a.attempts,a.delay)
-        else: verify(check,service_addresses,a.attempts,a.delay)
-    print(f"Functional verification passed for {len(raw)} check(s)."); return 0
+        if check["protocol"]=="redis-ping": results.append(verify_redis_ping(check,service_addresses,a.attempts,a.delay,a.json))
+        else: results.append(verify(check,service_addresses,a.attempts,a.delay,a.json))
+    if a.json: print(json.dumps({"schema_version":1,"checks":results},sort_keys=True,separators=(",",":")))
+    else: print(f"Functional verification passed for {len(raw)} check(s).")
+    return 0
 if __name__=="__main__":
     try: raise SystemExit(main())
     except (VerificationError,OSError,yaml.YAMLError,re.error,json.JSONDecodeError) as exc: print(f"ERROR: {exc}",file=sys.stderr); raise SystemExit(1)

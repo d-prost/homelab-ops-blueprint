@@ -49,11 +49,10 @@ recorded in [the 2026-09-27 evidence report](docs/evidence/REMOTE_SSH_PROOF_2026
 
 The current deployment record is intentionally small. I would like to make it more useful without turning it into another control plane:
 
-- version the record format;
-- include stable identifiers for the stack contract, manifest, target and verification result;
+- retain compatibility with legacy records as the v2 format gains operational use;
+- repeat live validation of stable contract, manifest, target and verification IDs after transaction changes;
 - record candidate failures and rollback results more clearly;
-- add JSON output where it is useful for tooling;
-- add an offline command that can compare a deployment record with repository history.
+- extend JSON output and offline Git comparison to transaction failure records.
 
 ## Stateful services
 

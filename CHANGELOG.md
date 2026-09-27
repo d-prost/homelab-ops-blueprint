@@ -37,3 +37,5 @@ The project follows Semantic Versioning once tagged public releases begin.
 - improve first-time onboarding with a complete clone/setup path, explicit project scope, maturity boundaries and external evaluation guidance;
 - define evidence-based criteria for the first stable release instead of treating repository age or popularity as release gates.
 - report remote proof facts without exposing inventory names or misinterpreting Docker's Go template as Ansible/Jinja syntax.
+- version accepted deployment records and add deterministic identity fields,
+  structured verifier results, and an offline Git/receipt comparison command.

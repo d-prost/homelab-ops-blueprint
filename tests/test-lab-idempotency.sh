@@ -79,6 +79,16 @@ sudo grep -Fxq 'verified=functional' "$record_file" || {
   printf 'FAIL: second transaction was not accepted after functional verification.\n' >&2
   exit 1
 }
+sudo grep -Fxq 'schema_version=2' "$record_file" || {
+  printf 'FAIL: second acceptance record did not use schema v2.\n' >&2
+  exit 1
+}
+sudo cat "$record_file" >"$tmp_root/second.record"
+sudo cat "$receipt_file" >"$tmp_root/second.receipt"
+python3 "$repo_root/scripts/compare-deployment-record.py" \
+  --record "$tmp_root/second.record" \
+  --receipt "$tmp_root/second.receipt" \
+  --repo "$repo_root" --history-ref HEAD --json
 
 sudo /usr/bin/python3 "$repo_root/scripts/verify-compose-health.py"   --stack-dir "$target_dir"   --compose-file docker-compose.yml   --env-file defaults.env   --contract "$repo_root/stacks/dozzle/stack.yml"
 
