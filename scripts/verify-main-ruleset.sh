@@ -68,6 +68,7 @@ expected_checks = {
     "Interruption recovery proof",
     "SSH session interruption proof",
     "Failure matrix runtime proof",
+    "Disposable stateful recovery proof",
     "CodeQL / Python",
 }
 

@@ -228,3 +228,23 @@ jobs:
         env:
           HOMELAB_LAB_FAILURE_MATRIX_TEST: "1"
         run: bash tests/test-lab-rollback-reverify-failure.sh
+
+  stateful-recovery-proof:
+    name: Disposable stateful recovery proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Docker availability
+        run: |
+          docker version
+          docker compose version
+
+      - name: Prove isolated Redis data recovery
+        env:
+          HOMELAB_STATEFUL_PROOF: "1"
+        run: bash tests/test-stateful-redis-recovery.sh

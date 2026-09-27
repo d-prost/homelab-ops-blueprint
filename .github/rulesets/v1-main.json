@@ -63,6 +63,9 @@
             "context": "Failure matrix runtime proof"
           },
           {
+            "context": "Disposable stateful recovery proof"
+          },
+          {
             "context": "CodeQL / Python"
           }
         ],

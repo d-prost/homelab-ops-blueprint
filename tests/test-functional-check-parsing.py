@@ -220,6 +220,23 @@ def main() -> int:
         [{"name": "dozzle-http", "service": "dozzle", "status_codes": [True]}],
         "has invalid status codes",
     )
+    redis_check = {
+        "name": "redis-ping", "service": "dozzle",
+        "protocol": "redis-ping", "port": 6379,
+    }
+    check_contract(validator, [redis_check])
+    check_contract(
+        validator, [{**redis_check, "status_codes": [200]}],
+        "Redis PING check contains HTTP fields",
+    )
+    check_contract(
+        validator, [{**redis_check, "port": True}],
+        "Redis PING check has invalid port",
+    )
+    check_contract(
+        validator, [{**redis_check, "protocol": "unknown"}],
+        "unsupported functional check protocol",
+    )
 
     # --- Runtime verifier: accepted shape ------------------------------------
     parsed = verifier.validate_check(
@@ -229,6 +246,11 @@ def main() -> int:
     assert parsed["service"] == "dozzle"
     assert parsed["port"] == 8080
     assert parsed["status_codes"] == [200]
+    assert verifier.validate_check(redis_check, 1)["protocol"] == "redis-ping"
+    expect_verification_error(
+        verifier, {**redis_check, "path": "/"}, 1,
+        "Redis PING check contains HTTP fields",
+    )
 
     # --- Runtime verifier: invalid fields ------------------------------------
     expect_verification_error(

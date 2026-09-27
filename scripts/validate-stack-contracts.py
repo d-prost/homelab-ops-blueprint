@@ -132,12 +132,22 @@ def validate_stack(stack_dir: Path) -> None:
             raise ContractError(f"{stack}: invalid or duplicate functional check name")
         if check.get("service") not in expected:
             raise ContractError(f"{stack}: functional check references an unknown service")
-        statuses = check.get("status_codes")
-        if not isinstance(statuses, list) or not statuses or any(
-            not isinstance(code, int) or isinstance(code, bool) or code < 100 or code > 599
-            for code in statuses
-        ):
-            raise ContractError(f"{stack}: functional check has invalid status codes")
+        protocol = check.get("protocol", "http")
+        if protocol == "redis-ping":
+            if any(field in check for field in ("path", "status_codes", "body_regex")):
+                raise ContractError(f"{stack}: Redis PING check contains HTTP fields")
+            port = check.get("port")
+            if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+                raise ContractError(f"{stack}: Redis PING check has invalid port")
+        elif protocol == "http":
+            statuses = check.get("status_codes")
+            if not isinstance(statuses, list) or not statuses or any(
+                not isinstance(code, int) or isinstance(code, bool) or code < 100 or code > 599
+                for code in statuses
+            ):
+                raise ContractError(f"{stack}: functional check has invalid status codes")
+        else:
+            raise ContractError(f"{stack}: unsupported functional check protocol")
         check_names.add(name)
 
     managed_files = require_list(contract.get("stack_managed_files"), f"{stack}:managed files")
@@ -178,9 +188,14 @@ def validate_stack(stack_dir: Path) -> None:
 
 def compose_canonical_model(stack_dir: Path) -> dict:
     compose_path = stack_dir / "compose.yaml"
+    command = ["docker", "compose"]
+    env_file = stack_dir / "defaults.env"
+    if env_file.is_file():
+        command.extend(["--env-file", str(env_file)])
+    command.extend(["-f", str(compose_path), "config", "--format", "json"])
     try:
         result = subprocess.run(
-            ["docker", "compose", "-f", str(compose_path), "config", "--format", "json"],
+            command,
             cwd=stack_dir,
             text=True,
             capture_output=True,

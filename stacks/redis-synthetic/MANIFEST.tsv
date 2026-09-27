@@ -1,0 +1,2 @@
+compose.yaml	/opt/homelab-ops/stacks/redis-synthetic/docker-compose.yml
+defaults.env	/opt/homelab-ops/stacks/redis-synthetic/defaults.env

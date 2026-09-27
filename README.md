@@ -8,7 +8,7 @@ A small Git + Ansible workflow for deploying Docker Compose stacks without addin
 
 I built this for homelab-sized environments where `docker compose up -d` is easy, but making changes safely and rolling them back is not. Git holds the stack definition, Ansible applies it, and the target is checked before a deployment is considered successful.
 
-The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` and `stacks/nginx/` are stateless reference stacks that exercise the same deployment contract with different applications.
+The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` and `stacks/nginx/` are stateless reference stacks that exercise the same deployment contract with different applications. `stacks/redis-synthetic/` is a disposable stateful recovery example; its unprotected Redis endpoint is intentionally limited to the private Compose network and is not a ready-made Production stack.
 
 ## Who this is for
 
@@ -131,6 +131,12 @@ If the deployment process or SSH session disappears after managed mutation may h
 
 Stateful stacks can also require recovery-readiness evidence before a Production change. That is handled separately from configuration rollback; see [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
 
+The synthetic Redis proof uses a Redis RDB export, destroys the source volume,
+restores into a fresh volume, and checks a representative key through `redis-cli`.
+Run it on a disposable Docker host with `make stateful-proof`. The proof records
+observed RPO, RTO and write-to-snapshot timing and cleans up its
+volumes and export file. See [its recovery boundary](stacks/redis-synthetic/recovery/README.md).
+
 ## Stack layout
 
 Each stack is self-contained:
@@ -195,6 +201,7 @@ The main local commands are:
 ```bash
 make validate     # syntax, contracts, tests and repository checks
 make lab-proof            # disposable deployment, injected failure and rollback test
+make stateful-proof       # disposable Redis export, isolated restore and content check
 make idempotency-proof    # redeploy the same accepted candidate and prove zero managed-file changes
 make ci                   # CI-oriented validation including Gitleaks when available
 ```

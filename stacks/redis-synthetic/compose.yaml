@@ -1,0 +1,12 @@
+services:
+  redis:
+    image: ${REDIS_IMAGE:?Set immutable REDIS_IMAGE RepoDigest}
+    command: ["redis-server", "--save", "60", "1", "--dir", "/data"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redis_data: {}

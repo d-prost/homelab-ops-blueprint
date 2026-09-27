@@ -31,6 +31,7 @@ Stale accepted marker proof
 Interruption recovery proof
 SSH session interruption proof
 Failure matrix runtime proof
+Disposable stateful recovery proof
 CodeQL / Python
 ```
 
@@ -55,6 +56,11 @@ The script creates or updates the named ruleset from:
 ```text
 .github/rulesets/v1-main.json
 ```
+
+When introducing a new required job, merge its workflow first using the
+currently active required-check set. Add the new context to the live ruleset
+only after the job has run successfully on `main`; requiring an unknown check
+before then would block every pull request.
 
 and then runs the verification script.
 
