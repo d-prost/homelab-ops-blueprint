@@ -83,8 +83,8 @@ sudo grep -Fxq 'schema_version=2' "$record_file" || {
   printf 'FAIL: second acceptance record did not use schema v2.\n' >&2
   exit 1
 }
-sudo cat "$record_file" >"$tmp_root/second.record"
-sudo cat "$receipt_file" >"$tmp_root/second.receipt"
+sudo cat "$record_file" | tee "$tmp_root/second.record" >/dev/null
+sudo cat "$receipt_file" | tee "$tmp_root/second.receipt" >/dev/null
 python3 "$repo_root/scripts/compare-deployment-record.py" \
   --record "$tmp_root/second.record" \
   --receipt "$tmp_root/second.receipt" \

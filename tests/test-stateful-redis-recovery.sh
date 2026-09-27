@@ -51,8 +51,8 @@ required_backup_inputs() {
 }
 
 wait_for_redis() {
-  local project="$1" attempt
-  for attempt in {1..30}; do
+  local project="$1"
+  for _ in {1..30}; do
     if [[ "$("${compose[@]}" -p "$project" exec -T redis redis-cli --raw PING 2>/dev/null | tr -d '\r')" == PONG ]]; then
       return 0
     fi

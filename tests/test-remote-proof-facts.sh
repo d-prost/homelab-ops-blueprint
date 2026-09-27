@@ -48,7 +48,10 @@ grep -Fq 'Control Ansible: ansible-playbook [core 2.20.1]' <<<"$output"
 grep -Fq 'Target OS: Ubuntu 26.04' <<<"$output"
 grep -Fq 'Docker Engine: 29.8.1' <<<"$output"
 grep -Fq 'Docker Compose: 5.5.1' <<<"$output"
-! grep -Fq 'synthetic-target |' <<<"$output"
+if grep -Fq 'synthetic-target |' <<<"$output"; then
+  printf 'FAIL: private target alias escaped the public fact report.\n' >&2
+  exit 1
+fi
 
 set +e
 failed_output="$(PATH="$tmp_root/bin:$PATH" HOMELAB_REMOTE_PROOF=1 \
@@ -58,6 +61,9 @@ failed_rc=$?
 set -e
 ((failed_rc != 0))
 grep -Fq 'fact query failed' <<<"$failed_output"
-! grep -Fq 'private diagnostic' <<<"$failed_output"
+if grep -Fq 'private diagnostic' <<<"$failed_output"; then
+  printf 'FAIL: private diagnostic escaped the failed fact report.\n' >&2
+  exit 1
+fi
 
 printf 'Remote proof fact collection tests passed.\n'
