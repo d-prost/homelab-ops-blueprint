@@ -31,6 +31,7 @@ The project follows Semantic Versioning once tagged public releases begin.
 - read-only manifest-managed file drift reporting against accepted Git payload bytes.
 - optional OpenSSH signatures for copied accepted records, with exact-byte verification.
 - machine-readable stack-contract validation for external stack directories.
+- strict-SSH Lab group mode for two-target disposable serial/canary proof before merging to `main`.
 
 ### Changed
 

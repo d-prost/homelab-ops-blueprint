@@ -88,7 +88,8 @@ def group_members(document: dict, group: str) -> set[str]:
     return members
 
 
-def select_targets(document: dict, mapping: dict, stack: str, mode: str) -> list[tuple[str, dict]]:
+def select_targets(document: dict, mapping: dict, stack: str, mode: str,
+                   environment: str = "production") -> list[tuple[str, dict]]:
     if not SAFE_STACK.fullmatch(stack):
         raise GroupError("unsafe stack name")
     stacks = mapping.get("stacks")
@@ -125,7 +126,7 @@ def select_targets(document: dict, mapping: dict, stack: str, mode: str) -> list
         if not isinstance(values, dict):
             raise GroupError(f"{host}: resolved host variables are missing")
         try:
-            validator.validate_host(host, values, "production")
+            validator.validate_host(host, values, environment, require_ssh=True)
         except validator.InventoryError as exc:
             raise GroupError(str(exc)) from exc
         hostname = values["homelab_expected_hostname"]
@@ -163,22 +164,26 @@ def atomic_json(path: Path, document: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def run_host(stack: str, alias: str, values: dict, check: bool, git_ref: str, temp_root: Path) -> dict:
+def run_host(stack: str, alias: str, values: dict, check: bool, git_ref: str,
+             temp_root: Path, environment: str = "production") -> dict:
     inventory = temp_root / f"{alias}.yml"
     inventory.write_text(yaml.safe_dump({"all": {"hosts": {alias: values}}}, sort_keys=False), encoding="utf-8")
     inventory.chmod(0o600)
     command = [
         "bash", str(ROOT / "scripts" / "deploy-stack.sh"), stack,
-        "--inventory", "production", "--inventory-file", str(inventory),
+        "--inventory", environment, "--inventory-file", str(inventory),
     ]
     if check:
         command.append("--check")
     if git_ref != "HEAD":
         command.extend(["--ref", git_ref])
     print(f"TARGET {alias}: starting {'check' if check else 'deployment'}", flush=True)
+    command_env = os.environ.copy()
+    if environment == "lab":
+        command_env["HOMELAB_LAB_HOSTNAME"] = values["homelab_expected_hostname"]
     process = subprocess.Popen(
         command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, bufsize=1,
+        text=True, bufsize=1, env=command_env,
     )
     output_parts: list[str] = []
     output_length = 0
@@ -204,11 +209,12 @@ def deploy(args: argparse.Namespace) -> dict:
     if not isinstance(mapping, dict) or set(mapping) != {"stacks"}:
         raise GroupError("stack-target mapping must contain only a stacks object")
     document = load_inventory(args.inventory)
-    selected = select_targets(document, mapping, args.stack, args.mode)
+    selected = select_targets(document, mapping, args.stack, args.mode, args.environment)
     report = {
         "schema_version": 1,
         "stack": args.stack,
         "mode": args.mode,
+        "environment": args.environment,
         "check_mode": args.check,
         "group_result": "PENDING",
         "targets": [],
@@ -222,7 +228,7 @@ def deploy(args: argparse.Namespace) -> dict:
                 report["targets"].append({"host": alias, "result": "SKIPPED", "reason": "previous host failed"})
                 continue
             try:
-                host_result = run_host(args.stack, alias, values, args.check, args.ref, temp_root)
+                host_result = run_host(args.stack, alias, values, args.check, args.ref, temp_root, args.environment)
             except OSError:
                 host_result = {"host": alias, "result": "FAILED_UNCLASSIFIED", "exit_code": 1}
             report["targets"].append(host_result)
@@ -238,6 +244,7 @@ def main() -> int:
     parser.add_argument("--inventory", type=Path, default=ROOT / "ansible/inventory/production/hosts.yml")
     parser.add_argument("--targets", type=Path, default=ROOT / "ansible/inventory/production/stack-targets.yml")
     parser.add_argument("--mode", choices=("serial", "canary"), default="serial")
+    parser.add_argument("--environment", choices=("production", "lab"), default="production")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--ref", default="HEAD")
     parser.add_argument("--output", type=Path)

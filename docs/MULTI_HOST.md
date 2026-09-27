@@ -54,3 +54,37 @@ The wrapper accepts `--ref` for the same historical payload rules as
 `deploy-stack.sh`. Production still requires a clean, current `main` control
 plane and strict SSH host-key verification on every target. The host-global
 lock applies independently to each target/stack pair on the one control host.
+
+## Disposable two-target SSH proof
+
+Before the code is merged to `main`, use two independent disposable Linux SSH
+targets through the explicit Lab path. Keep the inventory and target mapping
+outside public Git. Set `homelab_environment: lab`,
+`ansible_connection: ssh`, each target's distinct
+`homelab_expected_hostname`, and trusted SSH host keys. The group wrapper
+rejects disabled host-key checking, unsafe SSH arguments, duplicate identities,
+and hosts outside the mapped group. Both targets need Docker, Compose and
+noninteractive privilege escalation for the deployment role.
+
+```bash
+python3 scripts/deploy-group.py dozzle \
+  --environment lab \
+  --inventory /private/hosts.yml \
+  --targets /private/stack-targets.yml \
+  --mode canary --check
+
+python3 scripts/deploy-group.py dozzle \
+  --environment lab \
+  --inventory /private/hosts.yml \
+  --targets /private/stack-targets.yml \
+  --mode canary
+```
+
+The check must report `CHECK_PASSED` for both targets without creating managed
+files. The deployment must accept the canary before starting the second host
+and write `group_result: COMPLETE` with two `ACCEPTED` entries. Inspect each
+target's accepted record, receipt and functional check independently. For the
+negative proof, inject a candidate failure on the canary and verify that the
+second target is `SKIPPED` and unchanged. Clean only the exact disposable
+stack artifacts after capturing private evidence. The Lab path does not claim
+Production authorization or weaken the Production `main` requirement.

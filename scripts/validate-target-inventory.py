@@ -52,7 +52,7 @@ def inventory_hostvars(path: Path) -> dict[str, dict]:
     return hostvars
 
 
-def validate_host(name: str, values: dict, environment: str) -> None:
+def validate_host(name: str, values: dict, environment: str, *, require_ssh: bool = False) -> None:
     if values.get("homelab_environment") != environment:
         raise InventoryError(
             f"{name}: homelab_environment must be exactly {environment!r}"
@@ -75,13 +75,14 @@ def validate_host(name: str, values: dict, environment: str) -> None:
             f"{name}: homelab_expected_machine_id must be null or 32 lowercase hex characters"
         )
 
-    if environment != "production":
+    if environment != "production" and not require_ssh:
         return
 
+    scope = "Production" if environment == "production" else "Grouped Lab"
     connection = values.get("ansible_connection", "ssh")
     if connection != "ssh":
         raise InventoryError(
-            f"{name}: Production targets must use the ssh connection plugin, got {connection!r}"
+            f"{name}: {scope} targets must use the ssh connection plugin, got {connection!r}"
         )
 
     host_key_setting = values.get("ansible_host_key_checking")
@@ -89,7 +90,7 @@ def validate_host(name: str, values: dict, environment: str) -> None:
         isinstance(host_key_setting, str)
         and host_key_setting.strip().lower() in {"0", "false", "no", "off"}
     ):
-        raise InventoryError(f"{name}: Production host-key checking must not be disabled")
+        raise InventoryError(f"{name}: {scope} host-key checking must not be disabled")
 
     for key in ("ansible_ssh_args", "ansible_ssh_common_args", "ansible_ssh_extra_args"):
         value = values.get(key)
