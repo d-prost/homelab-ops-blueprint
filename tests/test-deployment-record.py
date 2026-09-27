@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 import subprocess
 import tempfile
 from pathlib import Path
@@ -91,7 +92,33 @@ def main() -> int:
         else:
             raise AssertionError("unsafe stack name was accepted")
 
-    print("Deployment-record comparison tests passed: v1/v2, Git mismatch, history and receipt guards.")
+        terminal = directory / "dozzle.result.json"
+        result = {
+            "schema_version": 1,
+            "stack": stack,
+            "candidate_commit": commit,
+            "tooling_commit": commit,
+            "stack_contract_id": f"sha256:{contract_hash}",
+            "manifest_id": f"sha256:{manifest_hash}",
+            "target_id": f"sha256:{target_hash}",
+            "result": "REJECTED_ROLLBACK_VERIFIED",
+            "rollback_result": "VERIFIED",
+        }
+        terminal.write_text(json.dumps(result), encoding="utf-8")
+        assert module.compare_result(terminal, ROOT, "origin/main")["status"] == "MATCH"
+        result["stack_contract_id"] = f"sha256:{'0' * 64}"
+        terminal.write_text(json.dumps(result), encoding="utf-8")
+        assert "contract_matches_git" in module.compare_result(terminal, ROOT, "origin/main")["failures"]
+        result["rollback_result"] = "FAILED"
+        terminal.write_text(json.dumps(result), encoding="utf-8")
+        try:
+            module.compare_result(terminal, ROOT, "origin/main")
+        except module.RecordError:
+            pass
+        else:
+            raise AssertionError("inconsistent rollback result was accepted")
+
+    print("Deployment-record comparison tests passed: v1/v2, terminal results, Git mismatch, history and receipt guards.")
     return 0
 
 

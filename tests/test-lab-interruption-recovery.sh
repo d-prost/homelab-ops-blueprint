@@ -44,7 +44,7 @@ cleanup() {
       down --remove-orphans >/dev/null 2>&1
   fi
   sudo rm -rf -- "$target_dir"
-  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
+  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file" /etc/homelab-ops/deployments/dozzle.result.json
   sudo rm -rf -- \
     "$prepared_candidate_dir" \
     "$interrupted_candidate_dir" \

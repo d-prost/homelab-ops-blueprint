@@ -1,0 +1,32 @@
+---
+- name: Write durable terminal transaction result
+  ansible.builtin.script:
+    cmd: >-
+      {{ homelab_repo_root }}/scripts/write-deployment-result.py
+      --destination {{ (homelab_deployment_record_dir ~ '/' ~ stack_name ~ '.result.json') | quote }}
+      --stack {{ stack_name | quote }}
+      --transaction-id {{ homelab_transaction_id | quote }}
+      --candidate-commit {{ homelab_release_commit | quote }}
+      --tooling-commit {{ homelab_tooling_commit | quote }}
+      --previous-commit {{ homelab_previous_accepted_commit | quote }}
+      --previous-record-id {{ homelab_previous_record_id | quote }}
+      --contract-hash {{ homelab_contract_hash | quote }}
+      --manifest-hash {{ homelab_manifest_hash | quote }}
+      --target-hostname {{ homelab_expected_hostname | quote }}
+      --target-machine-id {{ (homelab_expected_machine_id | default('', true)) | quote }}
+      --result {{ stack_result | quote }}
+      --rollback-result {{ stack_rollback_result | quote }}
+    executable: /usr/bin/python3
+  register: stack_result_write
+  changed_when: stack_result_write.rc == 0
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Report unavailable side-channel result evidence
+  ansible.builtin.debug:
+    msg: >-
+      Terminal result JSON could not be written. The accepted record and
+      unresolved transaction marker remain authoritative.
+  when:
+    - not ansible_check_mode
+    - stack_result_write.rc | default(1) != 0

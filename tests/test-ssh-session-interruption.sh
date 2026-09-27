@@ -71,7 +71,7 @@ cleanup() {
       down --remove-orphans >/dev/null 2>&1
   fi
   sudo rm -rf -- "$target_dir" "$candidate_dir" "$rollback_dir"
-  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
+  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file" /etc/homelab-ops/deployments/dozzle.result.json
   sudo rm -f -- /etc/sudoers.d/homelab-ci-ssh
   if id "$ssh_user" >/dev/null 2>&1; then
     sudo userdel --remove "$ssh_user" >/dev/null 2>&1 || true

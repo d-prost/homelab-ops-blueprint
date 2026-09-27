@@ -32,7 +32,7 @@ cleanup() {
     sudo /usr/bin/docker compose       --env-file "$target_dir/defaults.env"       -f "$target_dir/docker-compose.yml"       down --remove-orphans >/dev/null 2>&1
   fi
   sudo rm -rf -- "$target_dir"
-  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file"
+  sudo rm -f -- "$record_file" "$receipt_file" "$marker_file" /etc/homelab-ops/deployments/dozzle.result.json
   rm -rf -- "$tmp_root"
 }
 trap cleanup EXIT

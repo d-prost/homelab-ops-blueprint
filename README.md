@@ -132,6 +132,8 @@ target and verification-result IDs. The read-only
 [`compare-deployment-record.py`](scripts/compare-deployment-record.py) command
 compares a copied record and receipt with local Git history and can return JSON;
 see [deployment records](docs/DEPLOYMENT_RECORDS.md).
+The separate `<stack>.result.json` reports the latest candidate outcome and
+rollback result without replacing the accepted record.
 
 If the deployment process or SSH session disappears after managed mutation may have started, the next normal deployment first inspects the durable transaction marker. A `MUTATING` or `RESTORING` transaction is restored to the frozen previous accepted configuration and functionally reverified before any new candidate is prepared. A `PREPARED` transaction is cleanup-only. An `ACCEPTANCE_PENDING` marker is cleared without rollback only when the durable accepted record and its receipt prove the same transaction. Ambiguous or acceptance-persistence-failure states remain `INTERRUPTED_UNRESOLVED` for operator action. This is recovery, not a resume engine.
 

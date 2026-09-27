@@ -596,6 +596,13 @@
         - not ansible_check_mode
         - stack_acceptance_record_hash.rc | default(1) == 0
 
+    - name: Record accepted transaction outcome
+      ansible.builtin.include_tasks: write-result.yml
+      vars:
+        stack_result: ACCEPTED
+        stack_rollback_result: NOT_NEEDED
+      when: not ansible_check_mode
+
     - name: Report durable acceptance
       ansible.builtin.debug:
         msg: >-
@@ -671,6 +678,15 @@
         - stack_runtime_verified | default(false) | bool
         - not (stack_acceptance_committed | default(false) | bool)
 
+    - name: Record acceptance-persistence failure outcome
+      ansible.builtin.include_tasks: write-result.yml
+      vars:
+        stack_result: ACCEPTANCE_PERSISTENCE_FAILED
+        stack_rollback_result: NOT_ATTEMPTED
+      when:
+        - stack_runtime_verified | default(false) | bool
+        - not (stack_acceptance_committed | default(false) | bool)
+
     - name: Fail closed when acceptance persistence fails after runtime verification
       ansible.builtin.fail:
         msg: >-
@@ -684,6 +700,15 @@
         - stack_runtime_verified | default(false) | bool
         - not (stack_acceptance_committed | default(false) | bool)
 
+    - name: Record pre-mutation refusal outcome
+      ansible.builtin.include_tasks: write-result.yml
+      vars:
+        stack_result: PRE_MUTATION_REFUSAL
+        stack_rollback_result: NOT_NEEDED
+      when:
+        - not (stack_runtime_verified | default(false) | bool)
+        - not (stack_mutation_started | default(false) | bool)
+
     - name: Refuse failures that occurred before managed mutation
       ansible.builtin.fail:
         msg: >-
@@ -693,6 +718,13 @@
       when:
         - not (stack_runtime_verified | default(false) | bool)
         - not (stack_mutation_started | default(false) | bool)
+
+    - name: Record failure without a verified rollback target
+      ansible.builtin.include_tasks: write-result.yml
+      vars:
+        stack_result: REJECTED_ROLLBACK_FAILED
+        stack_rollback_result: UNAVAILABLE
+      when: not (stack_rollback_available | default(false) | bool)
 
     - name: Refuse an unprotected deployment failure
       ansible.builtin.fail:
@@ -814,6 +846,12 @@
           when: stack_rollback_available | default(false) | bool
 
       rescue:
+        - name: Record failed rollback outcome
+          ansible.builtin.include_tasks: write-result.yml
+          vars:
+            stack_result: REJECTED_ROLLBACK_FAILED
+            stack_rollback_result: FAILED
+
         - name: Report rollback or re-verification failure
           ansible.builtin.fail:
             msg: >-
@@ -823,6 +861,13 @@
               target-local recovery material are retained for operator
               reconciliation. Rollback failure:
               {{ ansible_failed_result.msg | default(ansible_failed_result) }}
+      when: stack_rollback_available | default(false) | bool
+
+    - name: Record verified rollback outcome
+      ansible.builtin.include_tasks: write-result.yml
+      vars:
+        stack_result: REJECTED_ROLLBACK_VERIFIED
+        stack_rollback_result: VERIFIED
       when: stack_rollback_available | default(false) | bool
 
     - name: Report failed deployment with successful rollback

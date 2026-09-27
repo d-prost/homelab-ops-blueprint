@@ -51,8 +51,7 @@ The current deployment record is intentionally small. I would like to make it mo
 
 - retain compatibility with legacy records as the v2 format gains operational use;
 - repeat live validation of stable contract, manifest, target and verification IDs after transaction changes;
-- record candidate failures and rollback results more clearly;
-- extend JSON output and offline Git comparison to transaction failure records.
+- repeat runtime proof of candidate failure and rollback-result side records after transaction changes.
 
 ## Stateful services
 

@@ -39,3 +39,5 @@ The project follows Semantic Versioning once tagged public releases begin.
 - report remote proof facts without exposing inventory names or misinterpreting Docker's Go template as Ansible/Jinja syntax.
 - version accepted deployment records and add deterministic identity fields,
   structured verifier results, and an offline Git/receipt comparison command.
+- write a separate durable JSON summary for each terminal transaction outcome
+  with explicit rollback disposition, and compare it with local Git history.

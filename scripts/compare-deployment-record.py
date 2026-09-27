@@ -15,6 +15,13 @@ COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 STACK = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*\Z")
+OUTCOMES = {
+    "ACCEPTED": {"NOT_NEEDED"},
+    "PRE_MUTATION_REFUSAL": {"NOT_NEEDED"},
+    "ACCEPTANCE_PERSISTENCE_FAILED": {"NOT_ATTEMPTED"},
+    "REJECTED_ROLLBACK_FAILED": {"UNAVAILABLE", "FAILED"},
+    "REJECTED_ROLLBACK_VERIFIED": {"VERIFIED"},
+}
 
 
 class RecordError(RuntimeError):
@@ -50,6 +57,28 @@ def valid_hash(value: str | None) -> bool:
     return isinstance(value, str) and bool(HASH.fullmatch(value))
 
 
+def result_checks(repo: Path, history_ref: str, commit: str, tooling: str) -> dict[str, bool | None]:
+    checks: dict[str, bool | None] = {}
+    checks["candidate_commit_available"] = git(repo, "cat-file", "-e", f"{commit}^{{commit}}").returncode == 0
+    checks["tooling_commit_available"] = git(repo, "cat-file", "-e", f"{tooling}^{{commit}}").returncode == 0
+    history = git(repo, "rev-parse", "--verify", "--quiet", f"{history_ref}^{{commit}}")
+    checks["history_ref_available"] = history.returncode == 0
+    for label, selected in (("candidate", commit), ("tooling", tooling)):
+        if checks["history_ref_available"] and checks[f"{label}_commit_available"]:
+            checks[f"{label}_in_history"] = git(repo, "merge-base", "--is-ancestor", selected, history_ref).returncode == 0
+        else:
+            checks[f"{label}_in_history"] = None
+    return checks
+
+
+def disposition(checks: dict[str, bool | None]) -> tuple[str, list[str], list[str]]:
+    unavailable = {"candidate_commit_available", "tooling_commit_available", "history_ref_available"}
+    failures = sorted(name for name, value in checks.items() if value is False and name not in unavailable)
+    unknown = sorted(name for name, value in checks.items() if value is None or (value is False and name in unavailable))
+    status = "MISMATCH" if failures else "UNVERIFIABLE" if unknown else "MATCH"
+    return status, failures, unknown
+
+
 def compare(record_path: Path, repo: Path, history_ref: str, receipt_path: Path | None) -> dict:
     if not REF.fullmatch(history_ref) or ".." in history_ref or "//" in history_ref:
         raise RecordError("unsafe Git history ref")
@@ -65,19 +94,7 @@ def compare(record_path: Path, repo: Path, history_ref: str, receipt_path: Path 
     if not valid_hash(record.get("contract_hash")) or not valid_hash(record.get("manifest_hash")):
         raise RecordError("record contains an invalid contract or manifest hash")
 
-    checks: dict[str, bool | None] = {}
-    checks["candidate_commit_available"] = git(repo, "cat-file", "-e", f"{commit}^{{commit}}").returncode == 0
-    checks["tooling_commit_available"] = git(repo, "cat-file", "-e", f"{tooling}^{{commit}}").returncode == 0
-    history = git(repo, "rev-parse", "--verify", "--quiet", f"{history_ref}^{{commit}}")
-    checks["history_ref_available"] = history.returncode == 0
-    if checks["history_ref_available"] and checks["candidate_commit_available"]:
-        checks["candidate_in_history"] = git(repo, "merge-base", "--is-ancestor", commit, history_ref).returncode == 0
-    else:
-        checks["candidate_in_history"] = None
-    if checks["history_ref_available"] and checks["tooling_commit_available"]:
-        checks["tooling_in_history"] = git(repo, "merge-base", "--is-ancestor", tooling, history_ref).returncode == 0
-    else:
-        checks["tooling_in_history"] = None
+    checks = result_checks(repo, history_ref, commit, tooling)
 
     contract = git_blob(repo, commit, f"stacks/{stack}/stack.yml") if checks["candidate_commit_available"] else None
     manifest = git_blob(repo, commit, f"stacks/{stack}/MANIFEST.tsv") if checks["candidate_commit_available"] else None
@@ -114,10 +131,7 @@ def compare(record_path: Path, repo: Path, history_ref: str, receipt_path: Path 
             and receipt.get("record_sha256") == hashlib.sha256(record_path.read_bytes()).hexdigest()
         )
 
-    unavailable = {"candidate_commit_available", "tooling_commit_available", "history_ref_available"}
-    failures = sorted(name for name, value in checks.items() if value is False and name not in unavailable)
-    unknown = sorted(name for name, value in checks.items() if value is None or (value is False and name in unavailable))
-    status = "MISMATCH" if failures else "UNVERIFIABLE" if unknown else "MATCH"
+    status, failures, unknown = disposition(checks)
     return {
         "schema_version": 1,
         "record_schema_version": int(version),
@@ -131,19 +145,76 @@ def compare(record_path: Path, repo: Path, history_ref: str, receipt_path: Path 
     }
 
 
+def compare_result(path: Path, repo: Path, history_ref: str) -> dict:
+    if not REF.fullmatch(history_ref) or ".." in history_ref or "//" in history_ref:
+        raise RecordError("unsafe Git history ref")
+    if not path.is_file() or path.is_symlink():
+        raise RecordError(f"result is not a regular file: {path}")
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RecordError("invalid result JSON") from exc
+    if not isinstance(result, dict) or result.get("schema_version") != 1:
+        raise RecordError("unsupported result schema")
+    stack = result.get("stack", "")
+    commit = result.get("candidate_commit", "")
+    tooling = result.get("tooling_commit", "")
+    if not STACK.fullmatch(stack) or not COMMIT.fullmatch(commit) or not COMMIT.fullmatch(tooling):
+        raise RecordError("result contains an invalid stack or commit identity")
+    outcome = result.get("result")
+    rollback = result.get("rollback_result")
+    if outcome not in OUTCOMES or rollback not in OUTCOMES[outcome]:
+        raise RecordError("inconsistent terminal and rollback results")
+    checks = result_checks(repo, history_ref, commit, tooling)
+    contract = git_blob(repo, commit, f"stacks/{stack}/stack.yml") if checks["candidate_commit_available"] else None
+    manifest = git_blob(repo, commit, f"stacks/{stack}/MANIFEST.tsv") if checks["candidate_commit_available"] else None
+    checks["contract_matches_git"] = None if not checks["candidate_commit_available"] else (
+        contract is not None and result.get("stack_contract_id") == f"sha256:{hashlib.sha256(contract).hexdigest()}"
+    )
+    checks["manifest_matches_git"] = None if not checks["candidate_commit_available"] else (
+        manifest is not None and result.get("manifest_id") == f"sha256:{hashlib.sha256(manifest).hexdigest()}"
+    )
+    target_id = result.get("target_id", "")
+    checks["target_id_well_formed"] = (
+        isinstance(target_id, str) and target_id.startswith("sha256:") and valid_hash(target_id[7:])
+    )
+    status, failures, unknown = disposition(checks)
+    return {
+        "schema_version": 1,
+        "record_type": "terminal_result",
+        "stack": stack,
+        "candidate_commit": commit,
+        "history_ref": history_ref,
+        "transaction_result": outcome,
+        "rollback_result": rollback,
+        "status": status,
+        "checks": checks,
+        "failures": failures,
+        "unknown": unknown,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--record", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--record", type=Path)
+    source.add_argument("--result-file", type=Path)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--history-ref", default="origin/main")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    report = compare(args.record, args.repo, args.history_ref, args.receipt)
+    if args.result_file and args.receipt:
+        raise RecordError("--receipt applies only to an accepted record")
+    report = (
+        compare_result(args.result_file, args.repo, args.history_ref)
+        if args.result_file else compare(args.record, args.repo, args.history_ref, args.receipt)
+    )
     if args.json:
         print(json.dumps(report, sort_keys=True))
     else:
-        print(f"{report['status']}: {report['stack']} {report['candidate_commit']}")
+        outcome = f" result={report['transaction_result']} rollback={report['rollback_result']}" if args.result_file else ""
+        print(f"{report['status']}: {report['stack']} {report['candidate_commit']}{outcome}")
         for name in report["failures"] + report["unknown"]:
             print(f"- {name}: {report['checks'][name]}")
     return {"MATCH": 0, "MISMATCH": 1, "UNVERIFIABLE": 2}[report["status"]]
