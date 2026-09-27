@@ -1,0 +1,9 @@
+---
+# Copy to stack-targets.yml and select real aliases from hosts.yml.
+# The list is the exact deployment order; canary must be the first host.
+stacks:
+  dozzle:
+    group: web
+    hosts:
+      - production-host
+    canary: production-host

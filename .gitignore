@@ -1,5 +1,6 @@
 # Local/private inventory
 ansible/inventory/production/hosts.yml
+ansible/inventory/production/stack-targets.yml
 
 # Secrets and local environment
 .env

@@ -8,6 +8,12 @@ target_dir="/opt/homelab-ops/stacks/dozzle"; record_file="/etc/homelab-ops/deplo
 cleanup(){ set +e; if [[ -f "$target_dir/docker-compose.yml" && -f "$target_dir/defaults.env" ]]; then sudo /usr/bin/docker compose --env-file "$target_dir/defaults.env" -f "$target_dir/docker-compose.yml" down --remove-orphans >/dev/null 2>&1; fi; sudo rm -rf -- "$target_dir"; sudo rm -f -- "$record_file" "$receipt_file" "$marker_file" /etc/homelab-ops/deployments/dozzle.result.json; rm -rf -- "$tmp_root"; }; trap cleanup EXIT
 mkdir -p "$runtime_dir"; chmod 0700 "$runtime_dir"
 export XDG_RUNTIME_DIR="$runtime_dir"; export ANSIBLE_CONFIG="$repo_root/ansible/ansible.cfg"
+bash scripts/deploy-stack.sh dozzle --inventory lab --check >"$tmp_root/check.log" 2>&1
+grep -Fq 'CHECK_PASSED:' "$tmp_root/check.log"
+sudo test ! -e "$target_dir"
+sudo test ! -e "$record_file"
+sudo test ! -e "$marker_file"
+sudo test ! -e "$result_file"
 bash scripts/deploy-stack.sh dozzle --inventory lab
 sudo grep -Fq '"result":"ACCEPTED"' "$result_file"
 before_compose="$(sudo sha256sum "$target_dir/docker-compose.yml" | awk '{print $1}')"; before_defaults="$(sudo sha256sum "$target_dir/defaults.env" | awk '{print $1}')"

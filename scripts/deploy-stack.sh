@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 usage() {
-  printf 'Usage: %s STACK [--check] [--inventory production|lab] [--ref GIT_REF]\n' "$0" >&2
+  printf 'Usage: %s STACK [--check] [--inventory production|lab] [--inventory-file ABSOLUTE_PATH] [--ref GIT_REF]\n' "$0" >&2
 }
 
 require_command() {
@@ -27,6 +27,7 @@ shift
 inventory="production"
 git_ref="HEAD"
 check_mode=0
+custom_inventory_file=""
 
 [[ "$stack" =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
   printf 'ERROR: unsafe stack name: %s\n' "$stack" >&2
@@ -47,6 +48,11 @@ while (($#)); do
     --ref)
       (($# >= 2)) || { usage; exit 2; }
       git_ref="$2"
+      shift 2
+      ;;
+    --inventory-file)
+      (($# >= 2)) || { usage; exit 2; }
+      custom_inventory_file="$2"
       shift 2
       ;;
     *)
@@ -107,7 +113,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-inventory_file="$repo_root/ansible/inventory/$inventory/hosts.yml"
+inventory_file="${custom_inventory_file:-$repo_root/ansible/inventory/$inventory/hosts.yml}"
+if [[ -n "$custom_inventory_file" && "$custom_inventory_file" != /* ]]; then
+  printf 'ERROR: custom inventory path must be absolute.\n' >&2
+  exit 2
+fi
 [[ -f "$inventory_file" ]] || {
   printf 'ERROR: inventory file missing: %s\n' "$inventory_file" >&2
   exit 1
@@ -417,6 +427,11 @@ if ((check_mode == 0)); then
     }
 fi
 
+if ((check_mode == 1)); then
+  printf 'CHECK_PASSED: target identity, candidate contract, recovery gate, rollback Git material and image declarations passed without managed target mutation.\n'
+  exit 0
+fi
+
 deploy_args=(
   -i "$inventory_file"
   "$repo_root/ansible/playbooks/deploy-stack.yml"
@@ -434,9 +449,5 @@ deploy_args=(
   -e "homelab_release_root=$release_root"
   "${become_args[@]}"
 )
-
-if ((check_mode == 1)); then
-  deploy_args+=(--check --diff)
-fi
 
 ansible-playbook "${deploy_args[@]}"

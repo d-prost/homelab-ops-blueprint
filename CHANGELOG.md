@@ -41,3 +41,5 @@ The project follows Semantic Versioning once tagged public releases begin.
   structured verifier results, and an offline Git/receipt comparison command.
 - write a separate durable JSON summary for each terminal transaction outcome
   with explicit rollback disposition, and compare it with local Git history.
+- add explicit stack-to-host mapping and bounded serial/canary group rollout
+  that stops on first failure and records one outcome per host.

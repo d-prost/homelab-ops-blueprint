@@ -85,7 +85,7 @@ Edit `hosts.yml` and replace the example values with the real SSH target setting
 
 The hostname is mandatory. `homelab_expected_machine_id` is optional and may remain `null`; when set, the target's `/etc/machine-id` must also match before mutation.
 
-Preview the deployment:
+Run a non-mutating preflight of the deployment:
 
 ```bash
 bash scripts/deploy-stack.sh dozzle --check
@@ -98,6 +98,11 @@ bash scripts/deploy-stack.sh dozzle
 ```
 
 The Production entry point expects a clean `main` that matches `origin/main`.
+
+For an explicit ordered set of Production hosts, use the private stack-to-host
+mapping and `scripts/deploy-group.py`. It supports serial or canary rollout,
+stops after the first failure, and writes a per-host JSON result. See
+[bounded multi-host rollout](docs/MULTI_HOST.md).
 
 Transactions for the same declared target and stack are serialized through a
 host-global lock on the configured control host. The lock is shared across

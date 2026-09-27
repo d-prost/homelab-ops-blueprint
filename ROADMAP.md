@@ -68,10 +68,8 @@ Configuration rollback and application-data restore will remain separate mechani
 
 Once the single-host path has enough real-world coverage:
 
-- support reusable inventory groups and explicit stack-to-host selection;
-- add serial and canary deployment modes;
-- keep a deployment result per host;
-- define clear behavior when only part of a group deploys successfully.
+- repeat [serial and canary group rollout](docs/MULTI_HOST.md) against multiple independent disposable SSH targets;
+- verify per-host result reports and partial-group behavior after future transaction changes.
 
 ## Later ideas
 

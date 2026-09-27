@@ -6,13 +6,15 @@
 all:
   children:
     production:
-      hosts:
-        production-host:
-          ansible_connection: ssh
-          ansible_host: CHANGE_ME_TARGET_ADDRESS
-          ansible_user: CHANGE_ME_OPERATOR
-          homelab_environment: production
-          homelab_expected_hostname: CHANGE_ME_PRODUCTION_HOSTNAME
-          # Optional stronger binding. Leave null until you intentionally pin
-          # the target's /etc/machine-id.
-          homelab_expected_machine_id: null
+      children:
+        web:
+          hosts:
+            production-host:
+              ansible_connection: ssh
+              ansible_host: CHANGE_ME_TARGET_ADDRESS
+              ansible_user: CHANGE_ME_OPERATOR
+              homelab_environment: production
+              homelab_expected_hostname: CHANGE_ME_PRODUCTION_HOSTNAME
+              # Optional stronger binding. Leave null until you intentionally pin
+              # the target's /etc/machine-id.
+              homelab_expected_machine_id: null
