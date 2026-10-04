@@ -1,3 +1,11 @@
+> [!NOTE]
+> Active development has moved to two successor projects:
+>
+> - [DeployInvariant](https://github.com/d-prost/deploy-invariant) — the reusable deployment transaction mechanism.
+> - [HomeLab Engineering](https://github.com/d-prost/homelab-engineering) — public architecture decisions, experiments and operational lessons.
+>
+> This repository is retained as the public development history that preceded both projects. It is no longer the canonical location for new work.
+
 # HomeLab Ops Blueprint
 
 A compact Git + Ansible workflow for safer Docker Compose changes without introducing a full orchestration platform.
