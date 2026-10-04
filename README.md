@@ -214,6 +214,7 @@ For a short reviewer/adopter path that does not touch an existing Production env
 | `scripts/` | setup, deploy, rollback, validation and readiness helpers |
 | `tests/` | contract, readiness and rollback tests |
 | `recovery/` | stateful adoption and restore-drill templates |
+| `advisory/` | public-safe engineering lessons promoted from real operations |
 | `docs/` | architecture, setup, recovery and release notes |
 
 ## Documentation
@@ -222,6 +223,7 @@ For a short reviewer/adopter path that does not touch an existing Production env
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the deployment and rollback path is put together
 - [`docs/ADOPTION.md`](docs/ADOPTION.md) — adapting the repository to your own stacks
 - [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — stateful readiness checks and evidence format
+- [`docs/PRODUCTION_LEARNING.md`](docs/PRODUCTION_LEARNING.md) — how real operating lessons are generalized without importing private evidence
 - [`docs/RELEASES.md`](docs/RELEASES.md) — project releases and operational tags
 - [`ROADMAP.md`](ROADMAP.md) — planned work and stable-release criteria
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request notes
