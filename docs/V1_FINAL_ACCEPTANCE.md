@@ -1,65 +1,56 @@
 # v1 final acceptance
 
-The repository is at the point where the remaining v1 work should be finished as
-one deliberate operator run rather than through more incremental framework work.
+I have reached the point where the remaining v1 work belongs in one deliberate acceptance run rather than another round of framework expansion.
 
-This document is the handoff for that run. It does not claim that the steps
-below have been executed.
+This document is my final handoff. It describes the acceptance sequence; it does not claim the remaining manual proofs have already happened.
 
-## Before the final run
+## Starting state
 
-Use a clean checkout of `main` on the control host and keep any private
-inventory, SSH material and target-specific evidence outside the repository.
+I begin from a clean `main` checkout on the control host.
 
-The two open v1 evidence items are intentionally manual:
+Private inventory, SSH material and target-specific evidence stay outside the repository.
 
-- issue #37: apply and prove the GitHub `main` change controls;
-- issue #35: execute the transaction path against a genuinely separate SSH
-  target.
+The two remaining external gates are:
 
-The synthetic stateful reference stack in issue #9 is follow-up work. It is not
-part of this final single-host stateless transaction acceptance run.
+- #37 — effective GitHub `main` change controls;
+- #35 — the real separate-target SSH transaction proof.
 
-## 1. Apply the GitHub main ruleset
+Issue #9 remains post-v1 stateful reference work.
 
-Run with a GitHub CLI identity that has repository `Administration: write`:
+## 1. Main change controls
+
+I apply and inspect the ruleset with an identity that has repository `Administration: write`:
 
 ```bash
 bash scripts/configure-main-ruleset.sh
 bash scripts/verify-main-ruleset.sh
 ```
 
-Then perform the blocked-merge proof required by issue #37:
+My #37 acceptance evidence is:
 
-1. open a temporary pull request;
-2. make one required machine check fail intentionally;
-3. confirm GitHub refuses the merge;
-4. restore the change;
-5. confirm the all-green pull request is mergeable with zero human approvals;
-6. close the temporary pull request without merging it.
+```text
+required check failing -> merge blocked
+required checks green   -> merge allowed with zero human approvals
+```
 
-Close #37 only after GitHub reports the effective rules and both merge behaviors
-have been observed.
+I use a temporary PR for that proof and close it without merging after both behaviors are observed.
 
-## 2. Execute the real remote SSH proof
+## 2. Real remote SSH proof
 
-Use a disposable or non-critical machine that is genuinely separate from the
-control host.
-
-Follow:
+I run the separate-target flow documented in:
 
 ```text
 docs/REMOTE_SSH_PROOF.md
 ```
 
-Start by collecting the public-safe facts:
+My first command is:
 
 ```bash
 HOMELAB_REMOTE_PROOF=1 \
   bash scripts/collect-remote-proof-facts.sh /absolute/path/to/private-hosts.yml
 ```
 
-The proof should finish with:
+The acceptance path ends as:
 
 ```text
 healthy baseline accepted
@@ -71,17 +62,13 @@ REJECTED_ROLLBACK_VERIFIED
 previous functional checks pass again
 ```
 
-Create the public evidence document from
-`docs/evidence/REMOTE_SSH_PROOF_TEMPLATE.md` only after the real run. Do not
-publish private addresses, hostnames, usernames, SSH material, deployment
-records or recovery evidence.
+After the real run I create the public-safe evidence document from `docs/evidence/REMOTE_SSH_PROOF_TEMPLATE.md`.
 
-Close #35 only after that evidence is committed.
+I close #35 only after that evidence is committed.
 
-## 3. Run the final local proof set
+## 3. Final local proof set
 
-Once #37 and #35 are complete, run the full local proof set from the same clean
-`main` checkout:
+After #37 and #35 are complete, I run the full proof set once from the same clean `main`:
 
 ```bash
 make validate
@@ -94,20 +81,15 @@ make ssh-interruption-proof
 make failure-matrix-proof
 ```
 
-The intent is one final acceptance pass. Do not add new framework behavior while
-this run is in progress. A real failure should become a narrowly scoped fix and
-be rerun from the affected boundary.
+During this pass I do not add framework scope. A real failure becomes a narrowly scoped fix followed by a rerun from the affected boundary.
 
-## 4. Prepare v1.0.0
+## 4. v1.0.0
 
-After the final run is green:
+When the final acceptance pass is green, I:
 
-1. review the remaining open issues and keep post-v1 work out of the release
-   boundary;
-2. move the relevant `Unreleased` entries in `CHANGELOG.md` into
-   `v1.0.0`;
-3. confirm the release notes describe the actual supported boundary rather than
-   planned features;
+1. review the remaining open issues and keep post-v1 work outside the release boundary;
+2. move the relevant `CHANGELOG.md` entries into `v1.0.0`;
+3. confirm that the release notes describe implemented support rather than planned features;
 4. create the project tag:
 
 ```bash
@@ -115,5 +97,4 @@ git tag -a v1.0.0 -m "HomeLab Ops Blueprint v1.0.0"
 git push origin v1.0.0
 ```
 
-Issue #9 and the read-only advisory tooling can continue after v1.0.0 without
-holding the first stable release open.
+Issue #9 and later advisory tooling continue after v1.0.0.

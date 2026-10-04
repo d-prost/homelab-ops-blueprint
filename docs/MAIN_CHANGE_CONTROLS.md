@@ -1,8 +1,8 @@
 # Main branch change controls
 
-Issue #37 defines the v1 GitHub change-control boundary.
+Issue #37 defines the v1 GitHub change-control boundary I want on `main`.
 
-The desired state is one active repository branch ruleset named:
+My desired state is one active repository ruleset named:
 
 ```text
 v1 main change controls
@@ -10,15 +10,15 @@ v1 main change controls
 
 It targets the default branch and has no bypass actors.
 
-## Enforced rules
+## Rules I enforce
 
-The ruleset requires:
+The ruleset keeps these properties:
 
-- all changes to `main` to arrive through a pull request;
-- zero mandatory human approvals, matching the solo-maintainer model;
-- branch deletion blocked;
-- force-push blocked;
-- required checks to be strict, so the PR is tested against the latest base state.
+- changes to `main` arrive through pull requests;
+- zero mandatory human approvals fit my solo-maintainer model;
+- branch deletion is blocked;
+- force-push is blocked;
+- required checks are strict against the latest base state.
 
 The required PR checks are:
 
@@ -34,67 +34,42 @@ Failure matrix runtime proof
 CodeQL / Python
 ```
 
-`OpenSSF Scorecard` is intentionally not a required PR check because the
-Scorecard workflow is not a stable pull-request check in the current workflow
-model. It remains enabled independently.
+I keep OpenSSF Scorecard enabled independently rather than making it a required PR check because its workflow is not a stable pull-request gate in the current model.
 
-GitHub rulesets require repository Administration write permission to create or
-update through the REST API.
+## Applying the ruleset
 
-## Apply
-
-Use a GitHub identity with repository `Administration: write` and an
-authenticated GitHub CLI:
+I apply the repository policy with a GitHub identity that has `Administration: write`:
 
 ```bash
 bash scripts/configure-main-ruleset.sh
 ```
 
-The script creates or updates the named ruleset from:
+The source policy is:
 
 ```text
 .github/rulesets/v1-main.json
 ```
 
-and then runs the verification script.
-
-To target a fork or test repository:
+For a fork or test repository I can override the target:
 
 ```bash
 HOMELAB_GITHUB_REPO=owner/repository \
   bash scripts/configure-main-ruleset.sh
 ```
 
-## Verify effective enforcement
+## Effective enforcement
 
-Run:
+My verification command is:
 
 ```bash
 bash scripts/verify-main-ruleset.sh
 ```
 
-Verification reads both the configured repository ruleset and GitHub's effective
-rules for `main`. It requires GitHub to report `main` as protected.
+I only consider #37 complete when GitHub reports effective `main` protection and I have observed both behaviors:
 
-## Blocked-merge proof
-
-After the ruleset is active, the final acceptance proof for #37 is a temporary
-pull request whose latest commit has at least one required machine check in a
-failing state.
-
-Confirm in GitHub that merge is blocked while the check is failing. Then fix or
-close the temporary PR; do not bypass the ruleset.
-
-A normal maintainer pull request with all required checks passing must remain
-mergeable without an independent human approval.
-
-Do not close #37 until both behaviors have been observed:
-
-1. failing required check -> merge blocked;
-2. all required checks green -> normal solo-maintainer merge allowed.
+1. a failing required check blocks merge;
+2. an all-green PR remains mergeable with zero human approvals.
 
 ## Boundary
 
-This ruleset enforces the Git review and CI acceptance path. It is not a
-deployment authorization system and does not replace the runtime transaction
-contract.
+This ruleset protects the Git review and CI acceptance path. I do not treat it as Production deployment authorization, and it does not replace the runtime transaction contract.

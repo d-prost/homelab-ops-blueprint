@@ -1,36 +1,31 @@
 # Adapting the repository
 
-The repository includes two stateless reference stacks, Dozzle and Nginx, so the deployment contract can be inspected against more than one application shape. The deployment code is intended to work with other Docker Compose stacks as well.
+I use the two stateless reference stacks, Dozzle and Nginx, as examples of the deployment contract rather than as special cases in the implementation.
 
-Before adapting it to an existing environment, use the disposable evaluation path in [`EVALUATION.md`](EVALUATION.md) on a non-critical host. That separates evaluation of the public workflow from any private Production assumptions.
+My adoption path keeps public evaluation separate from private Production assumptions.
 
-## 1. Configure your host
+## Host identity
 
-Create the local Production inventory from the example:
+I keep the local Production inventory outside public Git:
 
 ```bash
 cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-Set the SSH target, operator user and hostname expected on the target. Production
-uses the normal OpenSSH `known_hosts` trust store with strict host-key
-verification. Add the target's trusted SSH host key before the first run; an
-unknown or changed host key is a refusal, not an interactive trust prompt.
+The inventory binds the transaction to an SSH target and expected hostname. I use the normal OpenSSH `known_hosts` trust store with strict host-key checking.
 
-`homelab_expected_machine_id` is optional. Leave it `null` when hostname +
-SSH host-key identity is sufficient, or set it to the target's 32-character
-`/etc/machine-id` value for an additional stable-machine binding.
+`homelab_expected_machine_id` is optional. I leave it `null` when SSH host-key identity plus hostname is sufficient, and pin the target's 32-character `/etc/machine-id` when I want an additional stable-machine binding.
 
-Run a check before the first deployment:
+My preflight path is:
 
 ```bash
 bash scripts/deploy-stack.sh dozzle --check
 ```
 
-## 2. Add a stack
+## Stack contract
 
-Start with the structure used by `stacks/dozzle/` or `stacks/nginx/`:
+I start new stacks from the same shape as `stacks/dozzle/` or `stacks/nginx/`:
 
 ```text
 stacks/my-stack/
@@ -40,129 +35,101 @@ stacks/my-stack/
 └── MANIFEST.tsv
 ```
 
-In `stack.yml`, define:
+I use `stack.yml` for:
 
-- the target directory;
-- the files managed by the deployment;
-- the Compose services expected after startup;
-- functional checks that show the service is actually usable.
+- target directory;
+- managed files;
+- expected Compose services;
+- functional checks.
 
-`MANIFEST.tsv` must map the managed source files to the same target paths. Container images must use digest-pinned references.
+I use `MANIFEST.tsv` for the exact managed source-to-target mapping.
 
-Run the repository validation after adding or changing a stack:
+Remote images stay digest-pinned.
+
+The repository baseline for a stack change is:
 
 ```bash
 make validate
 ```
 
-## 3. Test in the lab
+## Lab path
 
-Use Check Mode first:
+My first pass is Check Mode:
 
 ```bash
 bash scripts/deploy-stack.sh my-stack --check
 ```
 
-For changes to the deployment or rollback code itself, run the disposable integration tests as well:
+For deployment or rollback behavior I use the disposable proofs:
 
 ```bash
 make lab-proof
 make idempotency-proof
 ```
 
-The control host serializes the same declared target/stack boundary with a
-host-global lock shared across local operator users. This is intentionally not
-a distributed lock: v1 assumes one configured control host for a given
-target/stack transaction boundary.
+The control host serializes one declared target/stack boundary with a host-global lock. I deliberately keep v1 to one configured control host for that boundary rather than adding distributed locking.
 
-For a new service, test the first real deployment on a disposable or non-critical target before adopting it on the main host. The first deployment has no earlier managed configuration to restore automatically.
+I treat the first real deployment of a new service as non-reversible by project-managed configuration history because no earlier accepted managed generation exists yet.
 
-## 4. Deploy
+## Production path
 
-Production deployment uses the current clean `main`:
+My normal Production mutation command is:
 
 ```bash
 bash scripts/deploy-stack.sh my-stack
 ```
 
-After the deployment succeeds, create an operational tag if you want a convenient reference for that accepted stack version:
+After an accepted deployment I can create an operational tag:
 
 ```bash
 bash scripts/tag-release.sh
 ```
 
-An older tag can later be selected with:
+A historical stack payload goes through the same current guarded deployment path:
 
 ```bash
 bash scripts/rollback-stack.sh my-stack release-YYYYMMDD-HHMMSSZ
 ```
 
-The selected tag supplies the stack payload. The current checkout still supplies the inventory, Ansible role and validation code.
+The tag supplies only the historical stack payload. Current `main` remains authoritative for inventory, validation and deployment logic.
 
-### Acceptance persistence failure
+## Acceptance persistence failure
 
-A successful runtime check is not sufficient by itself. Acceptance is committed only
-after the deployment record is durably written. If that persistence step fails,
-the command reports `ACCEPTANCE_PERSISTENCE_FAILED`, does not automatically
-roll back the verified runtime, and leaves:
+Runtime verification alone is not acceptance. I only treat the candidate as accepted after the deployment record has been committed durably.
+
+`ACCEPTANCE_PERSISTENCE_FAILED` leaves the target unresolved and keeps:
 
 ```text
 /var/lib/homelab-ops/transactions/<stack>.unresolved
 ```
 
-Subsequent transactions are refused while that marker exists. Inspect the target
-runtime, the last durable record in `/etc/homelab-ops/deployments/`, and the
-underlying storage/permission failure before removing the marker as an explicit
-operator reconciliation step. Do not remove it merely to bypass the guard.
+I treat that marker as a stop condition. I reconcile the runtime state, last durable accepted record and underlying storage or permission failure before clearing it.
 
-### Interrupted transaction recovery
+## Interrupted transactions
 
-The target keeps only a minimal durable transaction marker plus the candidate and
-previous accepted rollback material needed for recovery. It is not a journal and
-does not support resume semantics.
+The target keeps a minimal durable marker plus the frozen recovery material needed after control-process or SSH loss.
 
-On the next normal invocation:
+The next normal invocation classifies the state:
 
-- `PREPARED` means managed mutation was not crossed, so transient artifacts are
-  cleaned without rollback;
-- `MUTATING` or `RESTORING` restores the frozen previous accepted managed
-  configuration, reapplies Compose and reruns the previous functional checks;
-- `ACCEPTANCE_PENDING` is treated as already accepted only when the durable
-  record and receipt bind the same transaction and record hash;
-- `ACCEPTANCE_PERSISTENCE_FAILED` and any ambiguous/incomplete evidence remain
-  `INTERRUPTED_UNRESOLVED` and require operator reconciliation.
+- `PREPARED` — cleanup-only because managed mutation was not crossed;
+- `MUTATING` / `RESTORING` — restore and reverify the frozen previous accepted configuration;
+- `ACCEPTANCE_PENDING` — accepted only when the durable record and receipt bind the same transaction and record hash;
+- `ACCEPTANCE_PERSISTENCE_FAILED` or ambiguous evidence — `INTERRUPTED_UNRESOLVED` until I reconcile it explicitly.
 
-Check Mode does not perform recovery mutations. If unresolved state exists,
-rerun without `--check` to execute the bounded recovery path first.
+Check Mode does not perform recovery mutation.
 
-## Report an adoption result
+## Stateful services
 
-Reports from environments outside the repository's own CI are useful because they expose assumptions that a single maintainer's setup may not reveal.
+For persistent application data I define the `operations:` section and use the stateful checklist in [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
 
-A useful public report includes:
-
-- Linux distribution and version;
-- Docker Engine and Compose versions;
-- Ansible Core version;
-- local or remote target;
-- which stack or custom stack was used;
-- whether `make validate`, Check Mode and the deployment succeeded;
-- the smallest reproducible error if something failed.
-
-Use a GitHub Issue for reproducible defects or a Discussion for general adoption feedback. Keep private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence out of public GitHub content.
-
-## Stateful stacks
-
-For services with persistent application data, first define the `operations:` section in `stack.yml` and work through [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
-
-The Production readiness check expects:
+My Production readiness inputs are:
 
 ```bash
 export HOMELAB_RECOVERY_EVIDENCE=/path/to/recovery-readiness.json
 export HOMELAB_BACKUP_MAX_AGE_SECONDS=<seconds>
 ```
 
-To calculate the generation hash used by the readiness file:
+The current generation hash comes from:
 
 ```bash
 python3 scripts/check-recovery-readiness.py \
@@ -170,4 +137,18 @@ python3 scripts/check-recovery-readiness.py \
   --print-contract-hash
 ```
 
-See [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md) for the evidence format and the fields used by the check.
+The evidence format is documented in [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md).
+
+## Adoption evidence
+
+When I record an adoption result, I keep the public evidence limited to:
+
+- Linux distribution and version;
+- Docker Engine and Compose versions;
+- Ansible Core version;
+- local or remote target class;
+- stack shape;
+- command result;
+- smallest reproducible non-sensitive failure details.
+
+Private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence stay outside public GitHub content.

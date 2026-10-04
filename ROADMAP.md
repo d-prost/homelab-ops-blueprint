@@ -1,93 +1,93 @@
 # Roadmap
 
-This is a working list of the next things I want to improve. It is not tied to fixed release dates.
+This is the working list of what I want to improve next. I do not tie it to fixed release dates.
 
-## First stable release criteria
+## First stable release
 
-The first stable release is governed by the normative transaction contract in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md). The goal before `v1.0.0` is to prove that contract, not to add platform breadth.
+I define `v1.0.0` by the transaction contract in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md). My goal is to prove that contract, not to add platform breadth.
 
-Existing baseline criteria remain:
+The baseline already includes:
 
 - focused unit coverage around stack-contract and functional-check parsing;
-- at least two stateless reference stacks so the contract is exercised by more than one application shape;
-- a clean evaluation path that a new user can run from a fresh checkout;
-- at least one external clean-host or remote-target evaluation report, when available, with reproducible compatibility issues fixed or explicitly documented.
-
-The remaining v1 proof work is transaction-focused:
-
-- freeze the candidate and tooling identities before mutation;
-- verify SSH transport identity and declared target identity;
-- prove rollback material and required immutable images are available before mutation;
-- document and prove a real remote-host SSH deployment;
-- cover pre-mutation refusals, functional failures, rollback failures and interrupted transactions;
-- prove host-global concurrency locking and idempotency;
-- define and test durable acceptance-record commit semantics and persistence failure;
-- enforce appropriate GitHub `main` change controls for the maintainer model.
-
-Two stateless reference stacks and the clean evaluation path are already present. The remaining release criteria should be completed with real evidence rather than documentation-only claims.
-
-The external-test item is an evidence goal, not a popularity threshold. Stars and download counts are not release criteria.
+- two stateless reference stacks;
+- a clean evaluation path from a fresh checkout;
+- disposable rollback, idempotency, interruption and acceptance-persistence proofs;
+- frozen candidate and tooling identities;
+- SSH transport and target identity checks;
+- rollback-material and immutable-image preflight;
+- host-global serialization on one configured control host;
+- durable acceptance semantics.
 
 ## Final v1 acceptance
 
-The implementation work for the single-host stateless transaction path is
-substantially complete. The remaining release work should now be handled as one
-operator acceptance pass rather than by adding more framework behavior.
+I keep the remaining v1 work in one final acceptance pass rather than expanding the framework again.
 
-Use [`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) for the final
-sequence:
+[`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) is my authoritative handoff for that pass.
 
-- apply and prove the GitHub `main` ruleset required by issue #37;
-- execute the real separate-target SSH proof required by issue #35;
-- run the complete local proof set once from a clean `main` checkout;
-- prepare and tag `v1.0.0` if that acceptance pass is green.
+The two remaining external gates are:
 
-Additional parser coverage, failure cases and external reports remain useful, but
-they should not expand the release boundary unless the final acceptance run
-exposes a concrete defect.
+- #37 — effective GitHub `main` change controls and blocked-merge proof;
+- #35 — a real separate-target SSH transaction and rollback proof.
+
+After those gates, I run the complete local proof set once from clean `main` and tag `v1.0.0` only if the final pass is green.
+
+Additional parser coverage, failure cases and external reports remain useful, but I do not treat them as reasons to expand the v1 boundary unless the final acceptance run exposes a concrete defect.
 
 ## External validation
 
-The repository should remain easy to evaluate without access to a private HomeLab. The public evaluation path is documented in [`docs/EVALUATION.md`](docs/EVALUATION.md).
+I keep the repository independently evaluable without private HomeLab access. [`docs/EVALUATION.md`](docs/EVALUATION.md) is the public evaluation path.
 
-Useful external evidence includes successful clean-host validation, a disposable deployment report, a remote-target report, or a reproducible bug report. Public evidence must stay environment-neutral and must not contain private hostnames, addresses, credentials, backup identifiers, deployment receipts or recovery evidence.
+Useful evidence includes clean-host validation, disposable deployment results, separate-target reports and reproducible bug reports. I keep private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence out of public Git history.
 
 ## Deployment records
 
-The current deployment record is intentionally small. I would like to make it more useful without turning it into another control plane:
+I want to improve accepted deployment records without turning them into another control plane.
 
-- version the record format;
-- include stable identifiers for the stack contract, manifest, target and verification result;
-- record candidate failures and rollback results more clearly;
-- add JSON output where it is useful for tooling;
-- add an offline command that can compare a deployment record with repository history.
+Planned improvements include:
+
+- a versioned record format;
+- stable identifiers for the contract, manifest, target and verification result;
+- clearer candidate-failure and rollback outcomes;
+- JSON output where machine consumption is useful;
+- an offline comparison between copied records and Git history.
 
 ## Stateful services
 
-The first readiness gate is implemented, but stateful adoption still needs more work:
+The first readiness gate exists. My next stateful work is a fully synthetic, public-safe reference proof that covers:
 
-- improve declarations for data, secrets, exports and restore procedures;
-- add a fully synthetic stateful example that can be tested end to end;
-- expand tests around schema-sensitive changes and rollback compatibility;
-- refine the readiness evidence format as real usage exposes gaps.
+- explicit data, secret, export and restore boundaries;
+- application-aware export;
+- isolated restore;
+- representative content verification;
+- schema-sensitive rollback compatibility;
+- measured recovery evidence.
 
-Configuration rollback and application-data restore will remain separate mechanisms.
+Configuration rollback and application-data recovery remain separate mechanisms.
 
 ## Multi-host support
 
-Once the single-host path has enough real-world coverage:
+I keep multi-host work behind the single-host proof boundary.
 
-- support reusable inventory groups and explicit stack-to-host selection;
-- add serial and canary deployment modes;
-- keep a deployment result per host;
-- define clear behavior when only part of a group deploys successfully.
+The next design layer may include:
+
+- explicit stack-to-host selection;
+- reusable inventory groups;
+- serial and canary rollout;
+- one result per host;
+- defined partial-failure semantics.
+
+## Advisory tooling
+
+I keep the Production-derived advisory registry read-only and non-authoritative.
+
+A later advisor may explain which public-safe rules apply to a proposed change. It will not deploy, approve, mutate Production or silently turn advice into policy.
 
 ## Later ideas
 
-These are useful only if there is a real need for them:
+I will only add these when a concrete need justifies them:
 
 - deterministic hashes for more deployment artifacts;
 - optional signing of deployment records;
 - independent verification against Git history;
 - reusable validation tooling for other repositories;
-- drift reporting that reports differences without automatically changing Production.
+- drift reporting without automatic reconciliation.

@@ -1,44 +1,55 @@
-# Stateful Service Adoption Checklist
+# Stateful service adoption checklist
 
-Configuration rollback and data recovery are separate controls. A stack is not ready for managed Production deployment merely because its Compose model renders or its containers start.
+I treat configuration rollback and application-data recovery as separate controls. A rendered Compose model or running container is not enough for me to call a stateful stack ready for managed Production deployment.
 
-## Define the boundaries
+## Boundaries I define
 
-Document these items before adoption:
+Before adoption I record:
 
-- sanitized configuration files that Git may manage;
-- persistent data paths, named volumes, databases, indexes, uploads, and media;
-- secret files and credentials that remain outside Git;
-- database-aware export method, where applicable;
+- sanitized configuration that Git may manage;
+- persistent data paths, volumes, databases, indexes, uploads and media;
+- secrets that stay outside Git;
+- database-aware export method where applicable;
 - filesystem snapshot or backup class;
 - functional recovery checks using representative data;
 - target and measured RPO/RTO;
-- rollback rule for configuration and the explicit rule that persistent data is never rolled back automatically;
-- whether the previously accepted image/configuration generation remains compatible with data or schema changes made by the candidate.
+- configuration rollback rule;
+- explicit non-rollback rule for persistent application data;
+- compatibility between the previous accepted application generation and candidate data/schema changes.
 
-Classify every backup input as either **required** or **optional**. A missing required path must fail before creating a snapshot. Optional paths must be explicitly declared and reported as skipped. Resolve dynamic staging paths before validation; never validate a literal variable expression as though it were a filesystem path.
+Every backup input is classified as **required** or **optional**. A missing required input fails before snapshot or export creation. Optional inputs are explicit and reported as skipped.
 
-## Required proof
+## Proof I require
 
-Before changing a stateful service from observed to managed:
+Before I move a stateful service from observed to managed, I require evidence that:
 
-1. pin every remote image by digest;
-2. remove secrets and generated Runtime state from the Git payload;
-3. validate `stack.yml` against `MANIFEST.tsv`;
-4. create a database-aware export when the application uses a database;
-5. complete an isolated restore from the real backup path with Production unchanged;
-6. verify authentication plus representative record, file, media, or search access;
-7. record the backup source, restore target, result, and measured RPO/RTO without publishing private evidence;
-8. confirm the applicable RPO and RTO objectives were met;
-9. confirm configuration rollback to the previously accepted generation is safe after candidate failure; schema-sensitive or migration-heavy changes that cannot prove this are not eligible for the guarded stateful path;
-10. generate the exact public stack-generation hash with `scripts/check-recovery-readiness.py --print-contract-hash`;
-11. create the strict private readiness projection described in `docs/RECOVERY_READINESS.md`, covering the exact stateful service set and using `ready` only when all readiness assertions are true;
-12. derive the backup-freshness limit from the real backup cadence plus a bounded operational margin; for multiple required inputs, project the oldest applicable backup observation;
-13. keep the readiness JSON outside the public repository tree and ensure it is not group- or world-writable;
-14. run a check-mode deployment followed by one bounded real deployment through the same guarded Production path.
+1. every remote image is pinned by digest;
+2. secrets and generated runtime state are outside the Git payload;
+3. `stack.yml` and `MANIFEST.tsv` describe the same boundary;
+4. database-aware export exists when the application uses a database;
+5. isolated restore succeeds with Production unchanged;
+6. authentication and representative data access work after restore;
+7. backup source, restore target, result and measured RPO/RTO are recorded privately;
+8. applicable RPO and RTO objectives are met;
+9. configuration rollback to the previous accepted generation remains safe after candidate failure;
+10. the exact public stack-generation hash is recorded;
+11. the private readiness projection matches the exact stateful service set;
+12. backup freshness is derived from the real cadence plus bounded operational margin;
+13. readiness JSON stays outside the public repository and is not group- or world-writable;
+14. Check Mode and one bounded real deployment use the same guarded Production path.
+
+The generation hash command is:
+
+```bash
+python3 scripts/check-recovery-readiness.py \
+  stacks/<stack>/stack.yml \
+  --print-contract-hash
+```
 
 ## Ongoing rule
 
-Repeat the restore proof after a material change to the storage layout, database engine, container image generation, managed application configuration, backup writer, encryption, secret boundary, or restore procedure. The public generation hash intentionally invalidates readiness after managed payload or restore-runbook changes.
+I repeat the restore proof after material changes to storage layout, database engine, image generation, managed application configuration, backup writer, encryption, secret boundary or restore procedure.
 
-A green timer, successful snapshot creation, monitoring presence, or `container=running` is not recovery evidence. Do not introduce a routine-update or historical-deployment bypass around the readiness gate.
+A green timer, successful snapshot, monitoring presence or `container=running` is not recovery evidence.
+
+I do not add routine-update or historical-deployment bypasses around the readiness gate.

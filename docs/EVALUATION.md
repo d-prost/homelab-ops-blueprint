@@ -1,96 +1,87 @@
 # Evaluating the blueprint
 
-This page gives reviewers and prospective adopters a short, reproducible way to evaluate the project without connecting it to an existing Production environment.
+This is the public evaluation path I use to prove the repository contract without depending on a private Production environment.
 
 ## Scope
 
-The evaluation path proves the current public contract:
+The evaluation covers:
 
 - repository and stack validation;
-- immutable image-reference checks;
+- immutable image references;
 - Ansible syntax and contract checks;
-- disposable deployment of the reference stack;
-- functional verification after deployment;
-- an injected failed candidate deployment;
-- restoration and re-verification of the previously accepted managed configuration.
+- disposable deployment;
+- functional verification;
+- injected candidate failure;
+- restoration of the previous managed configuration;
+- functional re-verification after rollback.
 
-It does not prove application-data restore, multi-host deployment or environment-specific Production recovery objectives.
+It does not claim application-data recovery, multi-host rollout or environment-specific Production recovery objectives.
 
-A separate real remote-target proof is required for the v1 SSH evidence goal. The
-procedure and public-safe evidence format are documented in
-[`REMOTE_SSH_PROOF.md`](REMOTE_SSH_PROOF.md). Documentation alone does not
-satisfy that proof; it must be executed against a genuinely separate SSH target.
+The real separate-target SSH evidence is a different proof and remains documented in [`REMOTE_SSH_PROOF.md`](REMOTE_SSH_PROOF.md).
 
-## Requirements
+## Clean-host baseline
 
-Use a disposable or non-critical Debian/Ubuntu host with `sudo` access and outbound access to the package and container registries required by the setup.
+My disposable evaluation target is a non-critical Debian or Ubuntu host with `sudo` and outbound access to the required package and container registries.
 
-Clone the repository:
+The checkout path is:
 
 ```bash
 git clone https://github.com/d-prost/homelab-ops-blueprint.git
 cd homelab-ops-blueprint
-```
-
-Install the runtime dependencies without deploying a stack:
-
-```bash
 bash scripts/setup.sh --install-only
 ```
 
-## 1. Validate the repository
+## Repository validation
 
 ```bash
 make validate
 ```
 
-Expected result:
+Expected terminal output:
 
 ```text
 Validation passed.
 ```
 
-This checks the public-safety boundary, stack contracts, functional-check parsing, operational coverage, recovery-readiness logic, integrity guards and Ansible syntax. Optional lint/security tools are used when present; CI runs the strict validation path.
+This covers public-safety checks, stack contracts, functional-check parsing, operational coverage, recovery-readiness logic, integrity guards and Ansible syntax.
 
-## 2. Prove deployment and rollback
+## Deployment and rollback proof
 
 ```bash
 make lab-proof
 ```
 
-The proof deploys the public Dozzle reference stack in the local Lab inventory, records the accepted managed configuration, injects a candidate that exits immediately, verifies that the candidate is rejected, restores the previous managed configuration and runs the functional verification again.
-
-Expected result:
+Expected terminal output:
 
 ```text
 Ephemeral Lab rollback proof passed.
 ```
 
-The test installs only into its disposable Lab target path and removes the test stack and deployment record during cleanup.
+The proof accepts a healthy baseline, injects a failing candidate, restores the previous managed configuration, reruns the functional checks and cleans its disposable state.
 
-## 3. Inspect the control boundaries
+## Control boundaries I review
 
-For a code review, the most relevant files are:
+The files I treat as the most important review surfaces are:
 
-- `scripts/deploy-stack.sh` — guarded operator entry point;
+- `scripts/deploy-stack.sh` — guarded mutation entry point;
 - `scripts/validate-stack-contracts.py` — stack contract and immutable-image validation;
-- `ansible/roles/managed_stack/` — managed-file apply and rollback behavior;
+- `ansible/roles/managed_stack/` — managed apply and rollback behavior;
 - `scripts/verify-compose-health.py` — target functional verification;
-- `scripts/check-recovery-readiness.py` — optional stateful mutation gate;
-- `tests/test-lab-rollback.sh` — disposable failure-and-rollback proof;
-- `REMOTE_SSH_PROOF.md` — procedure for the external separate-target proof.
+- `scripts/check-recovery-readiness.py` — stateful mutation gate;
+- `tests/test-lab-rollback.sh` — disposable rollback proof;
+- `REMOTE_SSH_PROOF.md` — real separate-target evidence path.
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full control flow and [`ADOPTION.md`](ADOPTION.md) for adapting the repository to another stack.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) contains the full control flow.
 
-## Reporting results
+## Public evidence
 
-If you test the project outside its own CI, a useful report includes:
+When I publish an evaluation result, I keep it to:
 
-- Linux distribution and version;
+- OS distribution/version;
 - Docker Engine and Compose versions;
 - Ansible Core version;
-- local or remote target;
-- which commands were run;
-- the smallest reproducible error if something failed.
+- local or remote target class;
+- commands executed;
+- smallest reproducible non-sensitive failure.
 
-Do not include credentials, private hostnames, IP addresses, backup locations, deployment receipts or recovery evidence in a public report.
+Credentials, private hostnames, addresses, backup locations, deployment receipts and recovery evidence remain outside public reports.

@@ -1,42 +1,49 @@
 # Contributing
 
-Contributions are welcome. Small, focused pull requests are much easier to review than changes that mix deployment logic, documentation and unrelated cleanup.
+I welcome focused contributions that make the transaction model clearer, safer or easier to evaluate.
 
-## Before opening a pull request
+I prefer small pull requests over changes that mix deployment behavior, documentation and unrelated cleanup. This keeps review proportional to the risk of the change.
 
-Run the normal validation suite:
+## My acceptance baseline
+
+For normal changes I expect:
 
 ```bash
 make validate
 ```
 
-If you changed deployment, verification or rollback behavior, also run:
+For changes to deployment, verification or rollback behavior I also expect the relevant disposable proof, usually:
 
 ```bash
 make lab-proof
 ```
 
-Add or update tests when you change behavior. Documentation changes should describe what an operator actually needs to know rather than restating implementation details.
+I expect tests to change with behavior. I prefer documentation that explains the operational contract and the reason behind a decision instead of repeating implementation details.
 
 ## Pull requests
 
-A useful pull request description answers three questions:
+A useful pull request answers three things clearly:
 
-1. What problem does this solve?
-2. What changed?
-3. How was it tested?
+1. the problem being solved;
+2. the bounded change that solves it;
+3. the evidence used to support it.
 
-Please avoid unrelated formatting changes in the same PR. If a new dependency or background service is needed, explain why the existing scripts and Ansible path are not enough.
+I keep unrelated formatting and cleanup out of behavioral PRs. New dependencies, background services or control-plane behavior need a concrete reason that the existing Git + Ansible path cannot satisfy.
 
 ## Stack changes
 
-When adding or changing a stack, make sure:
+For stack changes I expect these properties to remain true:
 
-- `stack.yml` and `MANIFEST.tsv` describe the same managed files;
-- image references are pinned by digest;
-- expected services and functional checks match the Compose model;
-- `make validate` passes.
+- `stack.yml` and `MANIFEST.tsv` describe the same managed boundary;
+- remote images are pinned by digest;
+- expected services match the Compose model;
+- functional checks prove useful runtime behavior;
+- private secrets and environment-specific evidence stay outside public Git.
 
-## Bug reports
+## Reports
 
-Include the smallest reproducible example you can, along with the relevant validation or command output. Redact credentials and environment-specific details from logs or configuration before posting them publicly.
+The most useful bug reports contain the smallest reproducible case plus the relevant command output. Private hostnames, addresses, credentials, private URLs and recovery evidence do not belong in public reports.
+
+## Writing style
+
+I keep human-facing repository prose in the owner-led style documented in [`docs/WRITING_STYLE.md`](docs/WRITING_STYLE.md).

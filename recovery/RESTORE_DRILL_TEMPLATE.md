@@ -1,6 +1,6 @@
-# Functional Restore Drill Template
+# Functional restore drill template
 
-Use one copy per real restore exercise in a private evidence location. Do not commit real backup identifiers or restored personal data to a public repository.
+I keep one private copy of this template per real restore exercise. Real backup identifiers and restored personal data stay outside the public repository.
 
 ## Metadata
 
@@ -8,7 +8,7 @@ Use one copy per real restore exercise in a private evidence location. Do not co
 |---|---|
 | Service | |
 | Date | |
-| Operator | |
+| Evidence owner | |
 | Isolated Lab host | |
 | Backup source | Local / Offsite / Offline |
 | Backup reference | PRIVATE |
@@ -39,11 +39,11 @@ Use one copy per real restore exercise in a private evidence location. Do not co
 
 - [ ] application starts;
 - [ ] authentication works where applicable;
-- [ ] representative user function works;
-- [ ] representative restored object/hash matches where applicable.
+- [ ] representative function works;
+- [ ] representative restored object or hash matches where applicable.
 
 ## Result
 
 Result: `PASS` / `FAIL` / `PARTIAL`
 
-Document gaps without copying secrets or private topology into public Git.
+I record gaps without copying secrets or private topology into public Git.
