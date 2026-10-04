@@ -41,7 +41,7 @@ The target needs Docker, Docker Compose and Python. It does not need a checkout 
 The normal Production path is `scripts/deploy-stack.sh`.
 
 ```text
-operator
+manual invocation
   |
   v
 check local Git state
@@ -122,7 +122,7 @@ When a new candidate fails its checks, the role tries to restore the previously 
 5. run Compose for the restored configuration;
 6. run the previous functional checks again.
 
-The original deployment still exits as failed. The rollback result only tells the operator whether the previous configuration was restored successfully.
+The original deployment still exits as failed. The rollback result only reports whether the previous configuration was restored successfully.
 
 ### Explicit historical deployment
 
@@ -168,7 +168,7 @@ The main workflow has two useful classes of checks:
 1. static checks for Bash, Python, YAML, Ansible syntax, stack contracts, readiness logic and repository rules;
 2. a disposable integration test that deploys Dozzle, injects a failure, rolls back and verifies the restored service.
 
-This keeps Production changes operator-driven while still exercising the deployment and rollback code on every relevant change.
+This keeps Production changes explicitly initiated while still exercising the deployment and rollback code on every relevant change.
 
 ## Remote targets
 

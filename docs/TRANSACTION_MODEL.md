@@ -345,7 +345,7 @@ Required behavior:
 
 - the candidate is not marked accepted;
 - the target state is treated as unresolved;
-- new Production transactions are blocked until operator reconciliation;
+- new Production transactions are blocked until explicit manual reconciliation;
 - the system must not invent a stable `VERIFIED_BUT_NOT_RECORDED` accepted state.
 
 ## In-flight transaction marker
@@ -407,7 +407,7 @@ The rule is:
 
 > If mutation may have started and acceptance was not durably committed, re-establish the previous accepted state before starting another transaction.
 
-`ACCEPTANCE_PERSISTENCE_FAILED` remains operator-reconciled rather than automatically restored until the underlying persistence failure is addressed or the operator chooses an explicit recovery action.
+`ACCEPTANCE_PERSISTENCE_FAILED` remains manually reconciled rather than automatically restored until the underlying persistence failure is addressed or an explicit recovery action is chosen.
 
 ## Verified rollback
 
