@@ -1,8 +1,8 @@
 # Main branch change controls
 
-Issue #37 defines the v1 GitHub change-control boundary I want on `main`.
+Issue #37 tracks the v1 GitHub change-control boundary for `main`.
 
-My desired state is one active repository ruleset named:
+The desired state is one active repository ruleset named:
 
 ```text
 v1 main change controls
@@ -10,17 +10,17 @@ v1 main change controls
 
 It targets the default branch and has no bypass actors.
 
-## Rules I enforce
+## Rules
 
-The ruleset keeps these properties:
+The ruleset requires:
 
-- changes to `main` arrive through pull requests;
-- zero mandatory human approvals fit my solo-maintainer model;
-- branch deletion is blocked;
-- force-push is blocked;
-- required checks are strict against the latest base state.
+- pull requests for changes to `main`;
+- zero mandatory human approvals for the solo-maintainer model;
+- force-push protection;
+- branch-deletion protection;
+- strict required checks against the latest base state.
 
-The required PR checks are:
+Required checks:
 
 ```text
 Static validation
@@ -34,42 +34,38 @@ Failure matrix runtime proof
 CodeQL / Python
 ```
 
-I keep OpenSSF Scorecard enabled independently rather than making it a required PR check because its workflow is not a stable pull-request gate in the current model.
+OpenSSF Scorecard remains enabled independently instead of being used as a required PR gate.
 
 ## Applying the ruleset
-
-I apply the repository policy with a GitHub identity that has `Administration: write`:
 
 ```bash
 bash scripts/configure-main-ruleset.sh
 ```
 
-The source policy is:
+Policy source:
 
 ```text
 .github/rulesets/v1-main.json
 ```
 
-For a fork or test repository I can override the target:
+Alternate repository target:
 
 ```bash
 HOMELAB_GITHUB_REPO=owner/repository \
   bash scripts/configure-main-ruleset.sh
 ```
 
-## Effective enforcement
-
-My verification command is:
+## Verification
 
 ```bash
 bash scripts/verify-main-ruleset.sh
 ```
 
-I only consider #37 complete when GitHub reports effective `main` protection and I have observed both behaviors:
+Issue #37 is complete only after both behaviors are observed:
 
 1. a failing required check blocks merge;
 2. an all-green PR remains mergeable with zero human approvals.
 
 ## Boundary
 
-This ruleset protects the Git review and CI acceptance path. I do not treat it as Production deployment authorization, and it does not replace the runtime transaction contract.
+The ruleset protects the Git review and CI path. It is not Production deployment authorization and does not replace the runtime transaction contract.

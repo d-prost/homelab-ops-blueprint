@@ -1,23 +1,19 @@
 # Adapting the repository
 
-I use the two stateless reference stacks, Dozzle and Nginx, as examples of the deployment contract rather than as special cases in the implementation.
+The Dozzle and Nginx reference stacks exercise the same deployment contract with different applications. Other Docker Compose stacks can use the same structure.
 
-My adoption path keeps public evaluation separate from private Production assumptions.
+## Production inventory
 
-## Host identity
-
-I keep the local Production inventory outside public Git:
+Create a local inventory from the example:
 
 ```bash
 cp ansible/inventory/production/hosts.example.yml \
    ansible/inventory/production/hosts.yml
 ```
 
-The inventory binds the transaction to an SSH target and expected hostname. I use the normal OpenSSH `known_hosts` trust store with strict host-key checking.
+Production uses strict OpenSSH host-key verification. The target hostname is required; `homelab_expected_machine_id` can optionally pin `/etc/machine-id` as an additional identity check.
 
-`homelab_expected_machine_id` is optional. I leave it `null` when SSH host-key identity plus hostname is sufficient, and pin the target's 32-character `/etc/machine-id` when I want an additional stable-machine binding.
-
-My preflight path is:
+Preflight:
 
 ```bash
 bash scripts/deploy-stack.sh dozzle --check
@@ -25,7 +21,7 @@ bash scripts/deploy-stack.sh dozzle --check
 
 ## Stack contract
 
-I start new stacks from the same shape as `stacks/dozzle/` or `stacks/nginx/`:
+A stack uses:
 
 ```text
 stacks/my-stack/
@@ -35,18 +31,16 @@ stacks/my-stack/
 └── MANIFEST.tsv
 ```
 
-I use `stack.yml` for:
+`stack.yml` defines:
 
 - target directory;
 - managed files;
 - expected Compose services;
 - functional checks.
 
-I use `MANIFEST.tsv` for the exact managed source-to-target mapping.
+`MANIFEST.tsv` maps managed source files to target paths. Remote images must be pinned by digest.
 
-Remote images stay digest-pinned.
-
-The repository baseline for a stack change is:
+Repository validation:
 
 ```bash
 make validate
@@ -54,82 +48,80 @@ make validate
 
 ## Lab path
 
-My first pass is Check Mode:
+Check Mode:
 
 ```bash
 bash scripts/deploy-stack.sh my-stack --check
 ```
 
-For deployment or rollback behavior I use the disposable proofs:
+Deployment and rollback behavior can be exercised with:
 
 ```bash
 make lab-proof
 make idempotency-proof
 ```
 
-The control host serializes one declared target/stack boundary with a host-global lock. I deliberately keep v1 to one configured control host for that boundary rather than adding distributed locking.
+The control host serializes each declared target/stack boundary with a host-global lock. v1 assumes one configured control host for a given transaction boundary.
 
-I treat the first real deployment of a new service as non-reversible by project-managed configuration history because no earlier accepted managed generation exists yet.
+The first managed deployment of a new service has no earlier accepted configuration to restore automatically.
 
-## Production path
-
-My normal Production mutation command is:
+## Production deployment
 
 ```bash
 bash scripts/deploy-stack.sh my-stack
 ```
 
-After an accepted deployment I can create an operational tag:
+An operational tag can be created after an accepted deployment:
 
 ```bash
 bash scripts/tag-release.sh
 ```
 
-A historical stack payload goes through the same current guarded deployment path:
+Historical stack payloads use the same current guarded deployment path:
 
 ```bash
 bash scripts/rollback-stack.sh my-stack release-YYYYMMDD-HHMMSSZ
 ```
 
-The tag supplies only the historical stack payload. Current `main` remains authoritative for inventory, validation and deployment logic.
+The tag supplies the stack payload; current `main` remains authoritative for inventory, validation and deployment logic.
 
 ## Acceptance persistence failure
 
-Runtime verification alone is not acceptance. I only treat the candidate as accepted after the deployment record has been committed durably.
+Runtime verification is not sufficient by itself. Acceptance is complete only after the deployment record is durably written.
 
-`ACCEPTANCE_PERSISTENCE_FAILED` leaves the target unresolved and keeps:
+`ACCEPTANCE_PERSISTENCE_FAILED` leaves an unresolved marker at:
 
 ```text
 /var/lib/homelab-ops/transactions/<stack>.unresolved
 ```
 
-I treat that marker as a stop condition. I reconcile the runtime state, last durable accepted record and underlying storage or permission failure before clearing it.
+New transactions remain blocked until the runtime state, last durable record and storage/permission failure are reconciled.
 
 ## Interrupted transactions
 
-The target keeps a minimal durable marker plus the frozen recovery material needed after control-process or SSH loss.
+The target keeps a minimal durable marker and frozen recovery material.
 
-The next normal invocation classifies the state:
+The next normal invocation classifies the previous state:
 
-- `PREPARED` — cleanup-only because managed mutation was not crossed;
-- `MUTATING` / `RESTORING` — restore and reverify the frozen previous accepted configuration;
-- `ACCEPTANCE_PENDING` — accepted only when the durable record and receipt bind the same transaction and record hash;
-- `ACCEPTANCE_PERSISTENCE_FAILED` or ambiguous evidence — `INTERRUPTED_UNRESOLVED` until I reconcile it explicitly.
+- `PREPARED` — cleanup only;
+- `MUTATING` / `RESTORING` — restore and reverify the previous accepted configuration;
+- `ACCEPTANCE_PENDING` — accepted only when the record and receipt prove the same transaction;
+- ambiguous or persistence-failure states — `INTERRUPTED_UNRESOLVED`.
 
 Check Mode does not perform recovery mutation.
 
 ## Stateful services
 
-For persistent application data I define the `operations:` section and use the stateful checklist in [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
+Persistent services define an `operations:` section and follow [`../recovery/STATEFUL_ADOPTION_CHECKLIST.md`](../recovery/STATEFUL_ADOPTION_CHECKLIST.md).
 
-My Production readiness inputs are:
+Recovery-readiness inputs:
 
 ```bash
 export HOMELAB_RECOVERY_EVIDENCE=/path/to/recovery-readiness.json
 export HOMELAB_BACKUP_MAX_AGE_SECONDS=<seconds>
 ```
 
-The current generation hash comes from:
+Generation hash:
 
 ```bash
 python3 scripts/check-recovery-readiness.py \
@@ -137,18 +129,4 @@ python3 scripts/check-recovery-readiness.py \
   --print-contract-hash
 ```
 
-The evidence format is documented in [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md).
-
-## Adoption evidence
-
-When I record an adoption result, I keep the public evidence limited to:
-
-- Linux distribution and version;
-- Docker Engine and Compose versions;
-- Ansible Core version;
-- local or remote target class;
-- stack shape;
-- command result;
-- smallest reproducible non-sensitive failure details.
-
-Private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence stay outside public GitHub content.
+See [`RECOVERY_READINESS.md`](RECOVERY_READINESS.md) for the evidence format.

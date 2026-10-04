@@ -1,49 +1,45 @@
 # Contributing
 
-I welcome focused contributions that make the transaction model clearer, safer or easier to evaluate.
+Focused pull requests are preferred over changes that mix deployment behavior, documentation and unrelated cleanup.
 
-I prefer small pull requests over changes that mix deployment behavior, documentation and unrelated cleanup. This keeps review proportional to the risk of the change.
+## Validation
 
-## My acceptance baseline
-
-For normal changes I expect:
+The baseline check is:
 
 ```bash
 make validate
 ```
 
-For changes to deployment, verification or rollback behavior I also expect the relevant disposable proof, usually:
+Changes to deployment, verification or rollback behavior should also run the relevant disposable proof, usually:
 
 ```bash
 make lab-proof
 ```
 
-I expect tests to change with behavior. I prefer documentation that explains the operational contract and the reason behind a decision instead of repeating implementation details.
+Behavior changes should include matching tests.
 
 ## Pull requests
 
-A useful pull request answers three things clearly:
+A useful pull request explains:
 
-1. the problem being solved;
-2. the bounded change that solves it;
-3. the evidence used to support it.
+1. the problem;
+2. the bounded change;
+3. the evidence supporting it.
 
-I keep unrelated formatting and cleanup out of behavioral PRs. New dependencies, background services or control-plane behavior need a concrete reason that the existing Git + Ansible path cannot satisfy.
+Unrelated formatting changes should stay out of behavioral PRs. New dependencies, background services or control-plane behavior need a clear reason that the existing Git + Ansible path is insufficient.
 
 ## Stack changes
 
-For stack changes I expect these properties to remain true:
+Stack changes should preserve these properties:
 
 - `stack.yml` and `MANIFEST.tsv` describe the same managed boundary;
 - remote images are pinned by digest;
 - expected services match the Compose model;
 - functional checks prove useful runtime behavior;
-- private secrets and environment-specific evidence stay outside public Git.
+- secrets and environment-specific evidence remain outside public Git.
 
 ## Reports
 
-The most useful bug reports contain the smallest reproducible case plus the relevant command output. Private hostnames, addresses, credentials, private URLs and recovery evidence do not belong in public reports.
+Bug reports are most useful when they contain the smallest reproducible case and relevant non-sensitive output.
 
-## Writing style
-
-I keep human-facing repository prose in the owner-led style documented in [`docs/WRITING_STYLE.md`](docs/WRITING_STYLE.md).
+Private hostnames, addresses, credentials, private URLs, backup identifiers and recovery evidence should not be posted publicly.

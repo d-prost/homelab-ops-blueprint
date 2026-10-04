@@ -2,39 +2,37 @@
 
 ## Supported versions
 
-I apply security fixes to the default branch and, once public releases exist, to the latest supported major release.
+Security fixes are applied to the default branch and, once public releases exist, to the latest supported major release.
 
-## Vulnerability reports
+## Reporting a vulnerability
 
-I handle suspected vulnerabilities through GitHub Private Vulnerability Reporting in the repository **Security** tab.
+Use GitHub Private Vulnerability Reporting from the repository **Security** tab for suspected vulnerabilities.
 
-I keep exploit details, credentials, private hostnames, internal addresses, private URLs, backup metadata, private keys and recovery material out of public issues.
+Public issues should not contain exploit details, credentials, private hostnames, internal addresses, private URLs, backup metadata, private keys or recovery material.
 
-If private vulnerability reporting is unavailable, a public issue should contain only enough non-sensitive information to establish a private reporting channel.
+If private reporting is unavailable, a public issue can be used only to establish a private reporting channel without including vulnerability details.
 
 Non-sensitive hardening suggestions can use the normal issue tracker.
 
 ## Response targets
 
-These are working targets, not contractual SLAs:
+These are working targets rather than contractual SLAs:
 
-- private report acknowledged within 7 days;
+- acknowledgement within 7 days;
 - initial assessment within 14 days when reasonably possible;
-- disclosure coordinated after a fix or mitigation exists;
+- coordinated disclosure after a fix or mitigation exists;
 - exploit details withheld until there has been a reasonable opportunity to update.
 
-A useful private report identifies the affected component, expected security impact, reproducible details and any proposed mitigation.
+## Project boundary
 
-## Security boundary
+The repository contains reusable deployment logic, not real Production inventory or secrets.
 
-I keep reusable deployment logic in this repository and keep real Production inventory and secrets outside it.
-
-The project covers guarded configuration changes. Host hardening, network access control, secret storage, backup execution, functional restore testing and monitoring remain separate responsibilities in my environment.
+Host hardening, network access control, secret storage, backup execution, restore testing and monitoring remain separate operational responsibilities.
 
 Configuration rollback is not data recovery.
 
 ## Secret exposure
 
-I treat a committed secret as compromised. My recovery order is rotation or revocation first, repository cleanup second, and history rewriting when the exposure requires it.
+A committed secret should be treated as compromised: rotate or revoke it first, then remove it from the repository and rewrite history if the exposure requires it.
 
-Deleting the current file does not invalidate material already exposed through commits, forks, caches or logs.
+Deleting the current file alone does not invalidate material already present in commits, forks, caches or logs.

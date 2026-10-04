@@ -1,23 +1,23 @@
 ---
 name: Bug report
-description: Reproducible problem in the project boundary.
+description: Report a reproducible problem.
 title: "bug: "
 body:
   - type: markdown
     attributes:
-      value: Public reports stay free of credentials, private hostnames, addresses, URLs, secrets and recovery evidence.
+      value: Remove credentials, private hostnames, addresses, URLs, secrets and recovery evidence before posting.
   - type: textarea
     id: problem
     attributes:
       label: Observed behavior
-      description: The smallest clear description of what happened.
+      description: What happened?
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Expected behavior
-      description: The behavior expected from the documented project contract.
+      description: What behavior was expected?
     validations:
       required: true
   - type: textarea

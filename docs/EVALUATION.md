@@ -1,8 +1,8 @@
-# Evaluating the blueprint
+# Evaluation
 
-This is the public evaluation path I use to prove the repository contract without depending on a private Production environment.
+This is the public evaluation path for the current repository contract without depending on a private Production environment.
 
-## Scope
+## Coverage
 
 The evaluation covers:
 
@@ -15,15 +15,13 @@ The evaluation covers:
 - restoration of the previous managed configuration;
 - functional re-verification after rollback.
 
-It does not claim application-data recovery, multi-host rollout or environment-specific Production recovery objectives.
+It does not prove application-data recovery, multi-host rollout or environment-specific recovery objectives.
 
-The real separate-target SSH evidence is a different proof and remains documented in [`REMOTE_SSH_PROOF.md`](REMOTE_SSH_PROOF.md).
+The separate-target SSH proof is documented in [`REMOTE_SSH_PROOF.md`](REMOTE_SSH_PROOF.md).
 
 ## Clean-host baseline
 
-My disposable evaluation target is a non-critical Debian or Ubuntu host with `sudo` and outbound access to the required package and container registries.
-
-The checkout path is:
+A disposable Debian or Ubuntu host with `sudo` and outbound package/container-registry access is sufficient.
 
 ```bash
 git clone https://github.com/d-prost/homelab-ops-blueprint.git
@@ -37,13 +35,11 @@ bash scripts/setup.sh --install-only
 make validate
 ```
 
-Expected terminal output:
+Expected result:
 
 ```text
 Validation passed.
 ```
-
-This covers public-safety checks, stack contracts, functional-check parsing, operational coverage, recovery-readiness logic, integrity guards and Ansible syntax.
 
 ## Deployment and rollback proof
 
@@ -51,37 +47,28 @@ This covers public-safety checks, stack contracts, functional-check parsing, ope
 make lab-proof
 ```
 
-Expected terminal output:
+Expected result:
 
 ```text
 Ephemeral Lab rollback proof passed.
 ```
 
-The proof accepts a healthy baseline, injects a failing candidate, restores the previous managed configuration, reruns the functional checks and cleans its disposable state.
+The proof accepts a healthy baseline, injects a failing candidate, restores the previous managed configuration, reruns functional checks and removes its disposable state.
 
-## Control boundaries I review
+## Useful review surfaces
 
-The files I treat as the most important review surfaces are:
+- `scripts/deploy-stack.sh`
+- `scripts/validate-stack-contracts.py`
+- `ansible/roles/managed_stack/`
+- `scripts/verify-compose-health.py`
+- `scripts/check-recovery-readiness.py`
+- `tests/test-lab-rollback.sh`
+- `REMOTE_SSH_PROOF.md`
 
-- `scripts/deploy-stack.sh` — guarded mutation entry point;
-- `scripts/validate-stack-contracts.py` — stack contract and immutable-image validation;
-- `ansible/roles/managed_stack/` — managed apply and rollback behavior;
-- `scripts/verify-compose-health.py` — target functional verification;
-- `scripts/check-recovery-readiness.py` — stateful mutation gate;
-- `tests/test-lab-rollback.sh` — disposable rollback proof;
-- `REMOTE_SSH_PROOF.md` — real separate-target evidence path.
-
-[`ARCHITECTURE.md`](ARCHITECTURE.md) contains the full control flow.
+The complete control flow is described in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Public evidence
 
-When I publish an evaluation result, I keep it to:
-
-- OS distribution/version;
-- Docker Engine and Compose versions;
-- Ansible Core version;
-- local or remote target class;
-- commands executed;
-- smallest reproducible non-sensitive failure.
+Published evaluation notes should contain only non-sensitive compatibility and result data such as OS, Docker, Compose and Ansible versions, target class, commands used and reproducible errors.
 
 Credentials, private hostnames, addresses, backup locations, deployment receipts and recovery evidence remain outside public reports.

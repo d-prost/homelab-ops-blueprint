@@ -1,12 +1,12 @@
 # Real remote SSH proof
 
-This is the real separate-target proof I use for issue #35.
+Issue #35 requires one end-to-end transaction proof against a genuinely separate SSH target.
 
-Documentation and simulated SSH do not count as completion. I only close the proof after I run the transaction against a genuinely separate disposable or non-critical SSH target and record public-safe evidence.
+Documentation or simulated transport does not satisfy the proof.
 
 ## Boundary
 
-I keep the proof target separate from the control host and away from workloads whose availability or data matters.
+The target must be disposable or non-critical and separate from the control host.
 
 The proof covers:
 
@@ -14,16 +14,16 @@ The proof covers:
 2. declared target hostname identity;
 3. candidate deployment;
 4. functional verification;
-5. durable accepted evidence;
+5. durable acceptance;
 6. deliberate candidate failure;
-7. restoration of the previous accepted managed configuration;
+7. restoration of the previous accepted configuration;
 8. functional re-verification after restoration.
 
-I keep private hostnames, addresses, usernames, SSH material, credentials, deployment records and recovery identifiers out of the public evidence.
+Public evidence must not contain private hostnames, addresses, usernames, SSH material, credentials, deployment records or recovery identifiers.
 
-## Target shape
+## Target requirements
 
-My remote proof target provides:
+The target needs:
 
 - Debian or Ubuntu;
 - Python 3;
@@ -31,9 +31,9 @@ My remote proof target provides:
 - Docker Compose v2;
 - an SSH account with the required `sudo` capability.
 
-My control host uses the normal project dependencies and a clean current `main`.
+The control host uses the normal project dependencies and a clean current `main`.
 
-I keep the proof inventory outside the repository:
+Example private inventory:
 
 ```yaml
 ---
@@ -48,71 +48,59 @@ all:
       homelab_expected_machine_id: null
 ```
 
-The target key exists in my normal `known_hosts` trust store. I do not weaken host-key verification with `StrictHostKeyChecking=no`, `accept-new` or `UserKnownHostsFile=/dev/null`.
+The target SSH key must already exist in the normal `known_hosts` trust store. Host-key verification is not weakened for the proof.
 
 ## Public-safe facts
-
-My fact collection command is:
 
 ```bash
 HOMELAB_REMOTE_PROOF=1 \
   bash scripts/collect-remote-proof-facts.sh /absolute/path/to/private-hosts.yml
 ```
 
-The helper proves one remote SSH target classified as `lab`, runs target identity preflight and prints only the public-safe environment facts I need for the evidence record.
+The helper resolves one remote SSH target classified as `lab`, runs target-identity preflight and prints only the non-sensitive environment facts used by the evidence record.
 
-Raw inventory and raw Ansible output stay private.
+Raw inventory and raw Ansible output remain private.
 
 ## Healthy baseline
 
-I use the current Dozzle reference stack as the baseline.
+The current Dozzle reference stack is used as the baseline.
 
-The proof uses the same deployment playbook and `managed_stack` role as the normal transaction path.
-
-I record:
+Record:
 
 - candidate commit;
 - transaction result;
 - functional verification result;
 - existence of durable accepted evidence.
 
-I do not publish the accepted record itself.
+The accepted record itself is not published.
 
 ## Failing candidate
 
-I build the failure fixture outside the tracked checkout and keep all images digest-pinned.
+The failure fixture stays outside the tracked checkout and keeps images digest-pinned.
 
-The fixture changes only the disposable Dozzle payload enough to make the container exit immediately.
-
-I run that candidate against the same remote target with the frozen previous accepted payload and record identity.
-
-The terminal result I require is:
+The expected terminal result is:
 
 ```text
 REJECTED_ROLLBACK_VERIFIED
 ```
 
-Container state alone is not sufficient. I require the previous accepted functional checks to pass again after restoration.
+Container state alone is not sufficient; the previous functional checks must pass again after restoration.
 
 ## Cleanup
 
-After collecting evidence I remove:
-
-- the disposable reference stack;
-- the project-managed target directory;
-- proof deployment and transaction records from the disposable target.
+Remove the disposable stack, project-managed target directory and proof transaction records from the test target after evidence collection.
 
 Private SSH material and inventory remain outside the repository.
 
-## Public evidence record
+## Public evidence
 
-After the real run I create a dated evidence document from:
+A dated evidence record is created from:
 
 ```text
 docs/evidence/REMOTE_SSH_PROOF_TEMPLATE.md
 ```
 
-The public record contains:
+The public record includes:
 
 - date;
 - repository commit;
@@ -123,8 +111,8 @@ The public record contains:
 - topology class: `separate SSH target`;
 - baseline result;
 - injected-failure result;
-- rollback functional re-verification result;
+- rollback re-verification result;
 - relevant non-sensitive timings;
-- any reproducible compatibility issue.
+- reproducible compatibility issues, if any.
 
-I only close #35 after this real separate-target evidence exists in Git.
+Issue #35 closes only after the real separate-target evidence exists in Git.
