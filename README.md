@@ -225,6 +225,7 @@ For a short reviewer/adopter path that does not touch an existing Production env
 - [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — stateful readiness checks and evidence format
 - [`docs/PRODUCTION_LEARNING.md`](docs/PRODUCTION_LEARNING.md) — how real operating lessons are generalized without importing private evidence
 - [`docs/RELEASES.md`](docs/RELEASES.md) — project releases and operational tags
+- [`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) — final operator run before the first stable release
 - [`ROADMAP.md`](ROADMAP.md) — planned work and stable-release criteria
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request notes
 

@@ -28,13 +28,23 @@ Two stateless reference stacks and the clean evaluation path are already present
 
 The external-test item is an evidence goal, not a popularity threshold. Stars and download counts are not release criteria.
 
-## Next
+## Final v1 acceptance
 
-- add more unit tests around stack-contract and functional-check parsing;
-- execute and publish the public-safe evidence from `docs/REMOTE_SSH_PROOF.md` on a genuinely separate SSH target;
-- cover more failure cases around invalid manifests, target mismatches, failed health checks and incomplete rollback state;
-- collect at least one external clean-host or remote-target evaluation report when available;
-- prepare the first stable release once those paths have been exercised consistently.
+The implementation work for the single-host stateless transaction path is
+substantially complete. The remaining release work should now be handled as one
+operator acceptance pass rather than by adding more framework behavior.
+
+Use [`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) for the final
+sequence:
+
+- apply and prove the GitHub `main` ruleset required by issue #37;
+- execute the real separate-target SSH proof required by issue #35;
+- run the complete local proof set once from a clean `main` checkout;
+- prepare and tag `v1.0.0` if that acceptance pass is green.
+
+Additional parser coverage, failure cases and external reports remain useful, but
+they should not expand the release boundary unless the final acceptance run
+exposes a concrete defect.
 
 ## External validation
 
