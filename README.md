@@ -166,7 +166,7 @@ GitHub Actions runs the matching static and disposable checks. CI validates the 
 - [Adoption](docs/ADOPTION.md)
 - [Evaluation](docs/EVALUATION.md)
 - [Recovery readiness](docs/RECOVERY_READINESS.md)
-- [Operational lessons](docs/PRODUCTION_LEARNING.md)
+- [Operational lessons](docs/OPERATIONAL_LESSONS.md)
 - [Main change controls](docs/MAIN_CHANGE_CONTROLS.md)
 - [Real remote SSH proof](docs/REMOTE_SSH_PROOF.md)
 - [v1 final acceptance](docs/V1_FINAL_ACCEPTANCE.md)
