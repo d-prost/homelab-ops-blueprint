@@ -1,13 +1,13 @@
 ## Summary
 
-<!-- I describe the bounded change and why it exists. -->
+<!-- What changed, and why? -->
 
-## Evidence
+## Validation
 
 - [ ] `make validate`
-- [ ] relevant disposable proof when deployment or rollback behavior changes
-- [ ] tests added or updated when behavior changes
+- [ ] relevant disposable proof for deployment/rollback changes
+- [ ] tests updated when behavior changes
 
-## Boundary
+## Notes
 
-<!-- I note follow-up work, deliberate non-goals and behavior that remains unchanged. -->
+<!-- Follow-up work, non-goals, compatibility notes, or intentionally unchanged behavior. -->

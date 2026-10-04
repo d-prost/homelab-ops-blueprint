@@ -1,30 +1,24 @@
-# Learning from Production
+# Operational lessons
 
-Some of the strongest rules in this repository come from operating real systems rather than from clean-room design.
+Real operations expose failure modes that are difficult to predict from design alone. Reusable lessons can be carried into the public blueprint without copying private Production evidence.
 
-I keep that experience useful without coupling the public blueprint to my private environment.
+The boundary is simple:
 
-My rule is:
+> Generalize the lesson, keep the evidence private.
 
-> I promote the lesson, not the Production evidence.
+## Eligible lessons
 
-## What I promote
+Useful source material includes:
 
-I consider a Production-derived lesson eligible when it comes from evidence such as:
+- accepted operational changes;
+- failures with an understood root cause;
+- representative recovery drills;
+- rollback or cutback results;
+- decisions backed by reproducible evidence.
 
-- a merged and accepted operational change;
-- a failure with an understood root cause;
-- a representative recovery drill;
-- a rollback or cutback result;
-- an operating decision backed by reproducible evidence.
-
-I do not promote rules from dirty worktrees, unresolved merges, draft experiments, one-off debugging, assumptions or conclusions that were never verified.
-
-An observation is evidence. It is not automatically a reusable rule.
+Dirty worktrees, unresolved merges, draft experiments, one-off debugging and unverified assumptions are not suitable sources for reusable rules.
 
 ## Promotion path
-
-My promotion path is:
 
 ```text
 private observation
@@ -45,13 +39,13 @@ synthetic or repository-level proof
 advisory rule
 ```
 
-I treat enforcement as a separate change. A rule does not become a deployment requirement merely because it was learned from Production.
+Advisory rules do not become deployment requirements automatically. Enforcement is a separate reviewed change.
 
 ## Public/private boundary
 
-I promote mechanism, invariant, failure semantics and proof method.
+Public content can describe mechanisms, invariants, failure semantics and proof methods.
 
-I keep these details private:
+Private material includes:
 
 - hostnames and addresses;
 - usernames and credentials;
@@ -61,44 +55,31 @@ I keep these details private:
 - real recovery records;
 - private RPO/RTO values.
 
-The direction is deliberately one-way:
+The direction remains one-way:
 
 ```text
-private operations -> sanitized lesson -> public blueprint
+private operations -> generalized lesson -> public blueprint
 ```
 
-Public CI does not pull from my private operations repository, and the blueprint has no Production authority.
+Public CI does not need access to private operations data.
 
 ## Advisory registry
 
-Reusable lessons live in `advisory/rules.yml`.
+Reusable rules live in `advisory/rules.yml`.
 
-I add a rule when:
+A rule belongs there when the root cause is understood, the lesson applies beyond one host/application, the recommendation is deterministic enough to review, and the behavior can be tested without private infrastructure.
 
-1. I understand the root cause;
-2. the lesson applies beyond one application or host;
-3. the recommendation is deterministic enough to review;
-4. the behavior can be tested without private infrastructure;
-5. it does not duplicate a stronger invariant;
-6. the wording is public-safe.
+`scripts/validate-advisory-rules.py` keeps the registry schema narrow. Current entries remain `status: advisory`.
 
-`scripts/validate-advisory-rules.py` keeps the registry schema narrow. Current entries remain `status: advisory`, and stronger enforcement requires an independent mechanism and review.
-
-The advisory registry is not consumed by `scripts/deploy-stack.sh`.
+The registry is not consumed by `scripts/deploy-stack.sh`.
 
 ## Review use
 
-I use the registry to ask questions such as:
+Typical review questions include:
 
 - What state must exist before the first mutation?
 - What happens when post-change acceptance fails?
 - Is there one content authority for each managed artifact?
-- Can a helper process accidentally consume the control stream?
+- Can a subprocess consume a control stream it does not need?
 
-The output is advice. The transaction contract and my explicit Production decision remain authoritative.
-
-## Future tooling
-
-A later read-only advisor may consume the registry and explain which rules are relevant to a proposed change.
-
-I will keep that tool non-mutating and non-authoritative: no deploy, no approval, no hidden policy promotion and no private Production access.
+Any future tooling around these rules should remain read-only and non-authoritative.

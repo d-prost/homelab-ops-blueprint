@@ -1,6 +1,6 @@
 # Functional restore drill template
 
-I keep one private copy of this template per real restore exercise. Real backup identifiers and restored personal data stay outside the public repository.
+Keep one private copy per real restore exercise. Backup identifiers and restored personal data do not belong in the public repository.
 
 ## Metadata
 
@@ -46,4 +46,4 @@ I keep one private copy of this template per real restore exercise. Real backup 
 
 Result: `PASS` / `FAIL` / `PARTIAL`
 
-I record gaps without copying secrets or private topology into public Git.
+Document gaps without copying secrets or private topology into public Git.

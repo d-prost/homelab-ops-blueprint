@@ -1,30 +1,28 @@
 # Release process
 
-I use Semantic Versioning for published project releases.
+Published project releases use Semantic Versioning.
 
 Operational environment tags created by `scripts/tag-release.sh` are separate from public project versions.
 
-## First stable release
+## v1.0.0
 
-I only prepare `v1.0.0` after completing [`V1_FINAL_ACCEPTANCE.md`](V1_FINAL_ACCEPTANCE.md).
+The first stable release follows [`V1_FINAL_ACCEPTANCE.md`](V1_FINAL_ACCEPTANCE.md).
 
-My release boundary is:
+Release criteria:
 
 - final v1 acceptance complete;
 - relevant CI green;
 - OpenSSF Scorecard reviewed;
-- release notes aligned with the actual supported boundary;
+- release notes aligned with implemented support;
 - post-v1 work kept outside the release claim.
 
-I move the relevant `Unreleased` entries in `CHANGELOG.md` into the `v1.0.0` section only after the acceptance pass is complete.
+Relevant `Unreleased` entries in `CHANGELOG.md` move into `v1.0.0` only after final acceptance.
 
 ## Tag
-
-My project release tag is:
 
 ```bash
 git tag -a v1.0.0 -m "HomeLab Ops Blueprint v1.0.0"
 git push origin v1.0.0
 ```
 
-I keep project-version tags and operational environment tags conceptually separate.
+Project-version tags and operational environment tags serve different purposes and remain separate.

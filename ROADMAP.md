@@ -1,93 +1,74 @@
 # Roadmap
 
-This is the working list of what I want to improve next. I do not tie it to fixed release dates.
+The roadmap is intentionally small and is not tied to fixed release dates.
 
-## First stable release
+## v1.0.0
 
-I define `v1.0.0` by the transaction contract in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md). My goal is to prove that contract, not to add platform breadth.
+The first stable release is defined by the transaction contract in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md), not by feature count.
 
-The baseline already includes:
+Already implemented:
 
-- focused unit coverage around stack-contract and functional-check parsing;
+- stack-contract and functional-check validation;
 - two stateless reference stacks;
-- a clean evaluation path from a fresh checkout;
-- disposable rollback, idempotency, interruption and acceptance-persistence proofs;
+- disposable rollback and idempotency proofs;
+- interruption and acceptance-persistence handling;
 - frozen candidate and tooling identities;
 - SSH transport and target identity checks;
 - rollback-material and immutable-image preflight;
-- host-global serialization on one configured control host;
+- host-global serialization;
 - durable acceptance semantics.
 
-## Final v1 acceptance
+Remaining release gates:
 
-I keep the remaining v1 work in one final acceptance pass rather than expanding the framework again.
+- #37 — effective GitHub `main` change controls;
+- #35 — a real separate-target SSH transaction and rollback proof;
+- one final clean-checkout proof pass before tagging `v1.0.0`.
 
-[`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) is my authoritative handoff for that pass.
+The final sequence is documented in [`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md).
 
-The two remaining external gates are:
+## Stateful reference stack
 
-- #37 — effective GitHub `main` change controls and blocked-merge proof;
-- #35 — a real separate-target SSH transaction and rollback proof.
+Issue #9 tracks the first complete public stateful recovery example:
 
-After those gates, I run the complete local proof set once from clean `main` and tag `v1.0.0` only if the final pass is green.
-
-Additional parser coverage, failure cases and external reports remain useful, but I do not treat them as reasons to expand the v1 boundary unless the final acceptance run exposes a concrete defect.
-
-## External validation
-
-I keep the repository independently evaluable without private HomeLab access. [`docs/EVALUATION.md`](docs/EVALUATION.md) is the public evaluation path.
-
-Useful evidence includes clean-host validation, disposable deployment results, separate-target reports and reproducible bug reports. I keep private hostnames, addresses, credentials, backup identifiers, deployment receipts and recovery evidence out of public Git history.
-
-## Deployment records
-
-I want to improve accepted deployment records without turning them into another control plane.
-
-Planned improvements include:
-
-- a versioned record format;
-- stable identifiers for the contract, manifest, target and verification result;
-- clearer candidate-failure and rollback outcomes;
-- JSON output where machine consumption is useful;
-- an offline comparison between copied records and Git history.
-
-## Stateful services
-
-The first readiness gate exists. My next stateful work is a fully synthetic, public-safe reference proof that covers:
-
-- explicit data, secret, export and restore boundaries;
+- explicit data and secret boundaries;
 - application-aware export;
 - isolated restore;
-- representative content verification;
+- representative data verification;
 - schema-sensitive rollback compatibility;
 - measured recovery evidence.
 
-Configuration rollback and application-data recovery remain separate mechanisms.
+This remains separate from the first stateless v1 release.
+
+## Deployment records
+
+Possible follow-up work:
+
+- versioned record format;
+- stable contract and target identifiers;
+- clearer candidate-failure and rollback results;
+- optional JSON output;
+- offline comparison against Git history.
 
 ## Multi-host support
 
-I keep multi-host work behind the single-host proof boundary.
-
-The next design layer may include:
+Multi-host work stays behind the single-host transaction boundary. Likely additions include:
 
 - explicit stack-to-host selection;
-- reusable inventory groups;
+- inventory groups;
 - serial and canary rollout;
-- one result per host;
+- per-host results;
 - defined partial-failure semantics.
 
-## Advisory tooling
+## Operational lessons
 
-I keep the Production-derived advisory registry read-only and non-authoritative.
-
-A later advisor may explain which public-safe rules apply to a proposed change. It will not deploy, approve, mutate Production or silently turn advice into policy.
+The advisory registry remains read-only and non-authoritative. Any later tooling should explain relevant rules without gaining deployment or approval authority.
 
 ## Later ideas
 
-I will only add these when a concrete need justifies them:
+Only if there is a concrete need:
 
-- deterministic hashes for more deployment artifacts;
-- optional signing of deployment records;
-- independent verification against Git history;
-- reusable validation tooling for other repositories;
+- deterministic hashes for additional artifacts;
+- optional record signing;
+- independent Git-history verification;
+- reusable validation helpers;
 - drift reporting without automatic reconciliation.
