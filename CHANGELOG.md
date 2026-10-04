@@ -1,6 +1,6 @@
 # Changelog
 
-All notable project changes are recorded here.
+Notable project changes are recorded here.
 
 The project follows Semantic Versioning once tagged public releases begin.
 
@@ -8,27 +8,21 @@ The project follows Semantic Versioning once tagged public releases begin.
 
 ### Added
 
-- public-safe Git/Ansible Docker Compose operations blueprint;
-- transactional configuration rollback;
-- functional HTTP verification;
-- disposable CI rollback proof;
-- public-safety validation and complete-history secret scanning;
-- OpenSSF Scorecard workflow and community health files;
-- source-to-target `MANIFEST.tsv` validation;
-- remote-target functional verification without target-side Git checkouts;
-- stateful-service adoption and recovery checklist;
-- machine-checkable stateful recovery-readiness gate consuming private evidence outside public Git;
-- exact public-stack-generation hashing for recovery-evidence applicability;
-- recovery-readiness regression coverage for stale evidence, failed restore, service-scope mismatch, unsafe evidence files, generation changes, and historical-classification bypasses;
-- Nginx as a second stateless reference stack using the same deployment contract as the Dozzle example;
-- a reproducible evaluation guide for reviewers and prospective adopters.
+- guarded Git + Ansible deployment path for Docker Compose stacks;
+- target identity and immutable-image checks;
+- functional verification and verified configuration rollback;
+- durable deployment acceptance records;
+- disposable rollback, idempotency and interruption proofs;
+- stateful recovery-readiness gate;
+- Dozzle and Nginx reference stacks;
+- OpenSSF Scorecard and CodeQL workflows;
+- public evaluation and remote-SSH proof documentation;
+- operational advisory rules for reusable failure-prevention lessons.
 
 ### Changed
 
-- keep current inventory, Ansible logic, verification code, and recovery-readiness logic authoritative when deploying historical stack payloads;
-- derive rollback eligibility from a prior deployment receipt and verify the restored release with its exact Git contract;
-- support nested managed-file paths and remove candidate-only files during rollback;
-- require environment-supplied backup-freshness policy instead of embedding one public cadence;
-- invalidate stateful readiness evidence after recovery-relevant public runtime changes while leaving monitoring-only intent outside the proof hash;
-- improve first-time onboarding with a complete clone/setup path, explicit project scope, maturity boundaries and external evaluation guidance;
-- define evidence-based criteria for the first stable release instead of treating repository age or popularity as release gates.
+- historical stack payloads continue to use current validation and deployment logic;
+- rollback removes candidate-only managed files and re-verifies the restored stack;
+- stateful readiness evidence is tied to the recovery-relevant stack generation;
+- backup freshness is supplied by the environment rather than hard-coded;
+- documentation and repository templates were simplified ahead of v1.0.0.
