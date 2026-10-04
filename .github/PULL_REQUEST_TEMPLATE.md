@@ -1,13 +1,13 @@
 ## Summary
 
-What changed and why?
+<!-- I describe the bounded change and why it exists. -->
 
-## Testing
+## Evidence
 
 - [ ] `make validate`
-- [ ] `make lab-proof` if deployment or rollback behavior changed
-- [ ] I added or updated tests where needed
+- [ ] relevant disposable proof when deployment or rollback behavior changes
+- [ ] tests added or updated when behavior changes
 
-## Notes
+## Boundary
 
-Anything reviewers should know, including follow-up work or behavior that is intentionally unchanged.
+<!-- I note follow-up work, deliberate non-goals and behavior that remains unchanged. -->

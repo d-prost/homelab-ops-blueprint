@@ -1,12 +1,14 @@
 # Support
 
-Use GitHub Issues for reproducible bugs and scoped feature requests.
+I use GitHub Issues for reproducible bugs and bounded feature requests.
 
-Before opening an issue:
+A useful support report contains:
 
-- run `make validate` when possible;
-- search existing issues;
-- remove hostnames, IP addresses, credentials, private URLs, and secret values from logs;
-- include the smallest relevant non-sensitive configuration and exact error output.
+- the smallest reproducible case;
+- relevant Docker, Compose, Ansible and OS versions;
+- exact non-sensitive error or validation output;
+- enough context to explain the affected project boundary.
 
-This project is a reference implementation, not an emergency operations service. Production incidents should be handled using your own recovery and support procedures.
+I keep hostnames, addresses, credentials, private URLs, secret values, backup identifiers and recovery evidence out of public reports.
+
+This repository is a reference implementation, not an emergency operations service. I handle real Production incidents through the recovery and support procedures of the environment running the workload.

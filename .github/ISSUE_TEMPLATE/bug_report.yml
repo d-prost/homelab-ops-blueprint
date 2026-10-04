@@ -1,23 +1,30 @@
 ---
 name: Bug report
-description: Report a reproducible problem.
+description: Reproducible problem in the project boundary.
 title: "bug: "
 body:
   - type: markdown
     attributes:
-      value: Please redact credentials and environment-specific details from logs or configuration before posting them.
+      value: Public reports stay free of credentials, private hostnames, addresses, URLs, secrets and recovery evidence.
   - type: textarea
     id: problem
     attributes:
-      label: What happened?
-      description: Describe the problem and what you expected instead.
+      label: Observed behavior
+      description: The smallest clear description of what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: The behavior expected from the documented project contract.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: Steps to reproduce
-      description: Include the smallest set of steps or configuration needed to reproduce it.
+      label: Minimal reproduction
+      description: Smallest command sequence or configuration needed to reproduce the problem.
     validations:
       required: true
   - type: textarea
@@ -29,4 +36,4 @@ body:
     id: output
     attributes:
       label: Relevant output
-      description: Add validation output, logs or error messages if they help explain the problem.
+      description: Non-sensitive validation output, logs or error messages.

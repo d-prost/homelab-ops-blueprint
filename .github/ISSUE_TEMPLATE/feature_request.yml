@@ -1,22 +1,27 @@
 ---
 name: Feature request
-description: Suggest an improvement or new use case.
+description: Bounded improvement or new use case.
 title: "feature: "
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What are you trying to do that is awkward or not supported today?
+      label: Problem boundary
+      description: The concrete limitation or unsupported use case.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Idea
-      description: Describe the approach you have in mind, if any.
+      label: Proposed shape
+      description: The smallest useful approach, including deliberate non-goals.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Real operational need, reproducible limitation or other reason the added complexity is justified.
   - type: textarea
     id: context
     attributes:
       label: Additional context
-      description: Add examples, alternatives or constraints that would help evaluate the request.
+      description: Relevant alternatives, constraints or compatibility considerations.

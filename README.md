@@ -1,139 +1,66 @@
 # HomeLab Ops Blueprint
 
-A small Git + Ansible workflow for deploying Docker Compose stacks without adding a full orchestration platform.
+A small Git + Ansible workflow I use to make Docker Compose changes predictable, reviewable and reversible without adding a full orchestration platform.
 
 [![Validate blueprint](https://github.com/d-prost/homelab-ops-blueprint/actions/workflows/validate.yml/badge.svg)](https://github.com/d-prost/homelab-ops-blueprint/actions/workflows/validate.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/d-prost/homelab-ops-blueprint/badge)](https://securityscorecards.dev/viewer/?uri=github.com/d-prost/homelab-ops-blueprint)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-I built this for homelab-sized environments where `docker compose up -d` is easy, but making changes safely and rolling them back is not. Git holds the stack definition, Ansible applies it, and the target is checked before a deployment is considered successful.
+I built this for homelab-sized environments where starting containers is easy, but changing them safely is the harder problem. Git holds the desired stack payload, Ansible applies it, and I only treat a candidate as accepted after the target passes the required checks.
 
-The current implementation is aimed at single-host Docker Compose setups. `stacks/dozzle/` and `stacks/nginx/` are stateless reference stacks that exercise the same deployment contract with different applications.
+The current boundary is intentionally narrow: single-host Docker Compose, explicit target verification, immutable images, functional acceptance, durable acceptance evidence, bounded configuration rollback and separate recovery-readiness evidence for stateful services.
 
-## Who this is for
+## Scope
 
-This project is intended for operators who:
+I use this project when I want:
 
-- run one or a small number of Linux hosts with Docker Compose;
-- want Git-reviewed, reproducible changes without adopting Kubernetes or another full orchestration platform;
-- care about validating the target before a change, checking the application after it starts, and having an explicit configuration rollback path;
-- want public-safe automation that can be adapted to a private environment without publishing private inventories, secrets, backup locations or recovery evidence.
+- Git-reviewed and reproducible Docker Compose changes;
+- one guarded mutation path instead of several maintenance shortcuts;
+- target identity checks before mutation;
+- application-level verification after deployment;
+- explicit rollback semantics for managed configuration;
+- public automation that stays separate from private inventories, secrets and recovery evidence.
 
-It is not intended to be a general-purpose scheduler, service mesh, secrets manager or replacement for application-aware backup and restore tooling.
+I do not use it as a scheduler, service mesh, secrets manager, backup engine, deployment database or general-purpose control plane.
 
-## What makes the workflow different
+## Design
 
-The deployment path treats a Git commit as a candidate, not as proof that Production is healthy. Before a candidate is accepted, the workflow checks the repository state, target identity, stack contract, immutable image references and functional checks on the target. If a managed configuration change fails and the previous accepted configuration can be reconstructed, the deployment path restores that configuration and verifies it again.
+I treat a Git commit as a candidate, not as proof that Production is healthy.
 
-Configuration rollback and persistent application-data recovery deliberately remain separate mechanisms. Stateful services can require independent recovery-readiness evidence before a Production mutation is allowed.
+The normal transaction path is:
 
-## Project maturity
-
-The project is actively maintained and currently pre-1.0. The single-host stateless deployment path, contract validation, immutable image enforcement, functional verification and disposable rollback proof are implemented. Recovery-readiness gating for stateful stacks is also implemented.
-
-Before the first stable release, the project still needs more real-world remote-host validation and deeper parser/failure-path coverage. The current scope and remaining work are tracked in [`ROADMAP.md`](ROADMAP.md).
-
-## Quick start
-
-On a fresh Debian or Ubuntu host, clone the repository and run the setup script:
-
-```bash
-git clone https://github.com/d-prost/homelab-ops-blueprint.git
-cd homelab-ops-blueprint
-bash scripts/setup.sh
+```text
+candidate
+   |
+   v
+preflight + target identity
+   |
+   v
+contract + immutable image checks
+   |
+   v
+managed mutation
+   |
+   v
+functional verification
+   |
+   +--> PASS -> durable acceptance -> ACCEPTED
+   |
+   +--> FAIL -> restore previous config -> reverify
 ```
 
-The setup script installs the required runtime packages, starts Docker, validates the repository and deploys the Dozzle reference stack locally. It installs Docker Engine with Compose v2 when needed, Ansible Core, Python/PyYAML and the other packages required by the deployment scripts.
+Configuration rollback and application-data recovery remain separate controls. A stateful stack can require matching recovery-readiness evidence before the configuration transaction is allowed to mutate Production.
 
-To install the dependencies and validate the checkout without deploying a reference stack:
+The normative semantics are in [`docs/TRANSACTION_MODEL.md`](docs/TRANSACTION_MODEL.md).
 
-```bash
-bash scripts/setup.sh --install-only
-make validate
-```
+## Reference stacks
 
-To deploy the second reference stack instead:
+I keep two stateless reference stacks so the contract is exercised against more than one application shape:
 
-```bash
-bash scripts/setup.sh --stack nginx
-```
+- `stacks/dozzle/`
+- `stacks/nginx/`
 
-To use another stack after adding it to `stacks/`:
-
-```bash
-bash scripts/setup.sh --stack my-stack
-```
-
-Automatic package installation currently supports Debian and Ubuntu. On another Linux distribution, install Docker Engine with Compose v2, Ansible Core, Python 3 with PyYAML, Git, `sudo`, `tar` and `flock`, then use the normal deployment commands below.
-
-## Production setup
-
-For a Production host, install the dependencies first without starting the Lab example:
-
-```bash
-bash scripts/setup.sh --install-only
-```
-
-Create the local Production inventory:
-
-```bash
-cp ansible/inventory/production/hosts.example.yml \
-   ansible/inventory/production/hosts.yml
-```
-
-Edit `hosts.yml` and replace the example values with the real SSH target settings. Production uses strict OpenSSH host-key verification; add the trusted target key to the operator's normal `known_hosts` file before running the deployment. Unknown or changed host keys are refused.
-
-The hostname is mandatory. `homelab_expected_machine_id` is optional and may remain `null`; when set, the target's `/etc/machine-id` must also match before mutation.
-
-Preview the deployment:
-
-```bash
-bash scripts/deploy-stack.sh dozzle --check
-```
-
-Deploy it:
-
-```bash
-bash scripts/deploy-stack.sh dozzle
-```
-
-The Production entry point expects a clean `main` that matches `origin/main`.
-
-Transactions for the same declared target and stack are serialized through a
-host-global lock on the configured control host. The lock is shared across
-operator users and runtime environments on that host. v1 does not provide a
-distributed lock across multiple independent control hosts; use one configured
-control host for a given target/stack transaction boundary.
-
-## What happens during a deployment
-
-Before Production is changed, the deployment path verifies that:
-
-- the local checkout is a clean, up-to-date `main`;
-- the Production transport is SSH with host-key checking enabled;
-- the selected inventory host matches the target hostname;
-- the optional pinned `/etc/machine-id` matches when configured;
-- the exact selected stack payload passes the current contract validator;
-- each stack declares the files it manages and the services it expects;
-- `MANIFEST.tsv` matches the source-to-target file mapping;
-- container images are pinned by digest;
-- functional checks pass on the target after Compose starts;
-- the accepted Git commit is recorded only after those checks pass;
-- the acceptance record is committed with fsync + atomic rename semantics before the transaction is reported as accepted.
-
-Files that were managed by the previous release but are no longer part of the new contract are removed. Compose is also run with orphan cleanup so removed services do not remain running after a successful deployment or rollback.
-
-If a deployment fails and the previous managed configuration can be reconstructed, the role restores that configuration and runs the previous checks again. This rollback covers managed configuration, not application data or Docker volumes.
-
-If functional verification passes but the durable acceptance record cannot be committed, the candidate is **not accepted** and the workflow deliberately does not auto-rollback. A durable unresolved marker blocks subsequent transactions for that stack until an operator reconciles the target and acceptance evidence. This avoids making additional configuration writes when the failure may be caused by disk, filesystem, permission or mount problems.
-
-If the deployment process or SSH session disappears after managed mutation may have started, the next normal deployment first inspects the durable transaction marker. A `MUTATING` or `RESTORING` transaction is restored to the frozen previous accepted configuration and functionally reverified before any new candidate is prepared. A `PREPARED` transaction is cleanup-only. An `ACCEPTANCE_PENDING` marker is cleared without rollback only when the durable accepted record and its receipt prove the same transaction. Ambiguous or acceptance-persistence-failure states remain `INTERRUPTED_UNRESOLVED` for operator action. This is recovery, not a resume engine.
-
-Stateful stacks can also require recovery-readiness evidence before a Production change. That is handled separately from configuration rollback; see [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
-
-## Stack layout
-
-Each stack is self-contained:
+Each stack owns the same basic structure:
 
 ```text
 stacks/<name>/
@@ -143,109 +70,138 @@ stacks/<name>/
 └── MANIFEST.tsv
 ```
 
-`stack.yml` describes the target directory, managed files, expected services and functional checks. `MANIFEST.tsv` maps repository files to their target paths. The deployment role stages and installs only the files declared by that contract.
+`stack.yml` defines the target boundary, expected services and functional checks. `MANIFEST.tsv` defines the managed source-to-target file mapping. Remote images are pinned by digest.
 
-A minimal deployment flow looks like this:
+## Quick start
 
-```mermaid
-flowchart LR
-    A[Git commit] --> B[Preflight]
-    B --> C[Validate stack]
-    C --> D[Check target]
-    D --> E[Deploy files + Compose]
-    E --> F[Run target checks]
-    F -->|pass| G[Record accepted state]
-    F -->|fail| H[Restore previous config]
-    H --> I[Run previous checks]
-```
-
-## Releases and rollback
-
-Create an operational release tag with:
+My clean-host path on Debian or Ubuntu is:
 
 ```bash
-bash scripts/tag-release.sh
+git clone https://github.com/d-prost/homelab-ops-blueprint.git
+cd homelab-ops-blueprint
+bash scripts/setup.sh
 ```
 
-To deploy an earlier tagged stack payload:
+For dependency installation and repository validation without deploying a reference stack:
 
 ```bash
-bash scripts/rollback-stack.sh dozzle release-YYYYMMDD-HHMMSSZ
+bash scripts/setup.sh --install-only
+make validate
 ```
 
-Historical releases provide the stack payload only. The current checkout still supplies inventory, validation and deployment logic. Production release tags are checked against `origin`, and the selected release commit must belong to `origin/main` history.
+For the second reference stack:
 
-Automatic rollback is intentionally limited to configuration that was managed by this project and can be reconstructed from the previous accepted state. Database contents, uploads, media, indexes and other persistent application data need their own backup and restore process.
+```bash
+bash scripts/setup.sh --stack nginx
+```
 
-## Stateful stacks
+For another stack already added under `stacks/`:
 
-A stack can declare stateful services in `stack.yml`. For Production, the deployment path can require a recovery-readiness file and a backup-age policy:
+```bash
+bash scripts/setup.sh --stack my-stack
+```
+
+Automatic package installation currently targets Debian and Ubuntu. On other Linux distributions I keep the same runtime requirements: Docker Engine with Compose v2, Ansible Core, Python 3 with PyYAML, Git, `sudo`, `tar` and `flock`.
+
+## Production path
+
+I keep Production inventory local and outside the public repository state:
+
+```bash
+cp ansible/inventory/production/hosts.example.yml \
+   ansible/inventory/production/hosts.yml
+```
+
+My Production transport uses SSH with strict OpenSSH host-key verification. I bind the target to the expected hostname and can optionally pin `/etc/machine-id` as an additional identity check.
+
+My preflight command is:
+
+```bash
+bash scripts/deploy-stack.sh dozzle --check
+```
+
+My mutation command is:
+
+```bash
+bash scripts/deploy-stack.sh dozzle
+```
+
+The Production entry point requires a clean `main` matching `origin/main`.
+
+I serialize transactions for the same declared target and stack through a host-global lock on one configured control host. v1 deliberately does not add distributed locking across independent control hosts.
+
+## Stateful services
+
+For a stateful stack I keep recovery evidence separate from Git and provide only the narrow readiness projection consumed by the deployment gate:
 
 ```bash
 export HOMELAB_RECOVERY_EVIDENCE=/path/to/recovery-readiness.json
 export HOMELAB_BACKUP_MAX_AGE_SECONDS=<seconds>
 ```
 
-The readiness check verifies that the evidence applies to the current stack generation before the deployment proceeds. The schema and hash calculation are documented in [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
+The evidence is tied to the recovery-relevant stack generation. Configuration rollback never implies application-data rollback.
+
+The format and boundary are documented in [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md).
 
 ## Validation
 
-The main local commands are:
+My main local commands are:
 
 ```bash
-make validate     # syntax, contracts, tests and repository checks
-make lab-proof            # disposable deployment, injected failure and rollback test
-make idempotency-proof    # redeploy the same accepted candidate and prove zero managed-file changes
-make ci                   # CI-oriented validation including Gitleaks when available
+make validate
+make lab-proof
+make idempotency-proof
+make acceptance-proof
+make interruption-proof
+make stale-marker-proof
+make ssh-interruption-proof
+make failure-matrix-proof
 ```
 
-Local validation does not require the optional lint/security tools. CI installs ShellCheck, yamllint and Gitleaks and runs the stricter checks automatically.
-
-GitHub Actions runs static validation, a disposable rollback proof and a separate disposable idempotency proof. The rollback workflow deploys the Dozzle example, introduces a failure, restores the previous configuration and verifies the service again. The idempotency workflow deploys the same accepted candidate twice, proves the managed configuration files are unchanged on the second transaction, and still requires functional runtime verification.
-
-For a short reviewer/adopter path that does not touch an existing Production environment, see [`docs/EVALUATION.md`](docs/EVALUATION.md).
+GitHub Actions runs the corresponding static and disposable proofs. CI validates the repository and transaction behavior; it has no Production deployment authority.
 
 ## Repository layout
 
-| Path | Contents |
+| Path | Purpose |
 |---|---|
 | `ansible/` | inventories, playbooks and the managed-stack role |
-| `stacks/` | Docker Compose stack definitions |
-| `scripts/` | setup, deploy, rollback, validation and readiness helpers |
-| `tests/` | contract, readiness and rollback tests |
-| `recovery/` | stateful adoption and restore-drill templates |
-| `advisory/` | public-safe engineering lessons promoted from real operations |
-| `docs/` | architecture, setup, recovery and release notes |
+| `stacks/` | Docker Compose stack contracts and payloads |
+| `scripts/` | setup, deployment, rollback and validation helpers |
+| `tests/` | unit, contract and disposable transaction proofs |
+| `recovery/` | stateful adoption and restore-drill material |
+| `advisory/` | public-safe engineering lessons distilled from real operations |
+| `docs/` | architecture, adoption, recovery, release and evidence documentation |
 
 ## Documentation
 
-- [`docs/EVALUATION.md`](docs/EVALUATION.md) — reproducible reviewer/adopter evaluation path
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the deployment and rollback path is put together
-- [`docs/ADOPTION.md`](docs/ADOPTION.md) — adapting the repository to your own stacks
-- [`docs/RECOVERY_READINESS.md`](docs/RECOVERY_READINESS.md) — stateful readiness checks and evidence format
-- [`docs/PRODUCTION_LEARNING.md`](docs/PRODUCTION_LEARNING.md) — how real operating lessons are generalized without importing private evidence
-- [`docs/RELEASES.md`](docs/RELEASES.md) — project releases and operational tags
-- [`docs/V1_FINAL_ACCEPTANCE.md`](docs/V1_FINAL_ACCEPTANCE.md) — final operator run before the first stable release
-- [`ROADMAP.md`](ROADMAP.md) — planned work and stable-release criteria
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull-request notes
+- [Architecture](docs/ARCHITECTURE.md)
+- [Transaction model](docs/TRANSACTION_MODEL.md)
+- [Adoption](docs/ADOPTION.md)
+- [Evaluation](docs/EVALUATION.md)
+- [Recovery readiness](docs/RECOVERY_READINESS.md)
+- [Production learning](docs/PRODUCTION_LEARNING.md)
+- [Main change controls](docs/MAIN_CHANGE_CONTROLS.md)
+- [Real remote SSH proof](docs/REMOTE_SSH_PROOF.md)
+- [v1 final acceptance](docs/V1_FINAL_ACCEPTANCE.md)
+- [Writing style](docs/WRITING_STYLE.md)
+- [Roadmap](ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Project status
 
-The single-host stateless deployment path and disposable rollback test are implemented, with Dozzle and Nginx as separate public reference stacks. Remote targets work without a Git checkout on the target, although the project still needs more real-world remote-host coverage. Stateful readiness support is in place, while richer stateful declarations, a complete synthetic stateful example and multi-host deployment are still planned.
+I keep support claims narrower than implementation ideas. The single-host stateless transaction path is implemented and exercised by disposable proofs. The remaining first-stable-release gates are the real separate-target SSH evidence and effective GitHub `main` protection described in the v1 acceptance handoff.
 
-The project is intentionally conservative about claims of support: functionality moves out of the roadmap only after it has a reproducible proof or enough real-world coverage to justify the claim.
+Stateful reference recovery, richer deployment records, multi-host rollout and read-only advisory tooling remain separate follow-up work.
 
-## Contributing and feedback
+## Contributions and feedback
 
-Run `make validate` before opening a pull request. If a change affects deployment or rollback behavior, run `make lab-proof` as well.
+I welcome focused pull requests and reproducible reports. I prefer changes that solve one bounded problem, preserve the transaction model, and include evidence proportional to the behavior being changed.
 
-External deployment reports are useful even when no code change is needed. If you try the blueprint on a disposable or non-critical host, open a GitHub Discussion or Issue with the Linux distribution, Docker/Compose version, whether the target was local or remote, and the smallest reproducible details for anything that failed. Do not include credentials, private hostnames, addresses or recovery evidence.
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
+The contribution baseline is documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Security
 
-Please report security issues through GitHub Private Vulnerability Reporting. See [`SECURITY.md`](SECURITY.md).
+I handle suspected vulnerabilities through GitHub Private Vulnerability Reporting and keep private environment details out of public issues. The full boundary is documented in [`SECURITY.md`](SECURITY.md).
 
 ## License
 
